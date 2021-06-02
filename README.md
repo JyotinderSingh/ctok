@@ -5,10 +5,26 @@ pronounced 'talk')*.
 
 ctok *(pronounced 'sea-talk')* is a Bytecode Virtual Machine written in C for Tok.
 
-I started working on this after reading [Bob Nystrom](https://journal.stuffwithstuff.com/) 's book, Crafting
-Interpreters.
+This is a much faster and sophisticated implementation compared to
+[jtok, the interpreter I wrote for Tok in Java](https://github.com/JyotinderSingh/jtok).
 
 Head over to the [Documentation](/DOCUMENTATION.md) to see code examples and other language features!
+
+```
+                   ctok architecture
+                
+            ------------
+           |  Compiler  |       <- Front End
+            ------------
+                  v
+            ------------
+           |  Bytecode  |       <- Representation
+            ------------
+                  v
+          -----------------
+         | Virtual Machine |    <- Execution
+          -----------------
+```
 
 ## The Tok Language Spec
 
