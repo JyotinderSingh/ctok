@@ -54,12 +54,24 @@ static InterpretResult run() {
  * as the index for the corresponding Value in the chunk's constant table.
  */
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+
+// Boilerplate for underlying implementation of all the binary operators.
+#define BINARY_OP(op) \
+    do { \
+      double b = pop(); \
+      double a = pop(); \
+      push(a op b); \
+    } while (false)
+
+
+// Looping over all the instructions in the current chunk.
     for (;;) {
 
-/**
- * If the DEBUG_TRACE_EXECUTION flag is defined the debugger disassembles the instructions dynamically.
- */
+// If the DEBUG_TRACE_EXECUTION flag is defined the debugger disassembles the instructions dynamically.
 #ifdef DEBUG_TRACE_EXECUTION
+        /**
+         * We print the stack with every instruction we execute.
+         */
         printf("          ");
         for (Value *slot = vm.stack; slot < vm.stackTop; slot++) {
             printf("[ ");
@@ -80,6 +92,18 @@ static InterpretResult run() {
                 push(constant);
                 break;
             }
+            case OP_ADD:
+                BINARY_OP(+);
+                break;
+            case OP_SUBTRACT:
+                BINARY_OP(-);
+                break;
+            case OP_MULTIPLY:
+                BINARY_OP(*);
+                break;
+            case OP_DIVIDE:
+                BINARY_OP(/);
+                break;
             case OP_NEGATE:
                 push(-pop());
                 break;
@@ -92,6 +116,7 @@ static InterpretResult run() {
     }
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef BINARY_OP
 }
 
 InterpretResult interpret(Chunk *chunk) {
