@@ -7,6 +7,10 @@
 #include "chunk.h"
 #include "memory.h"
 
+/**
+ * Function to initialize a chunk before use.
+ * @param chunk
+ */
 void initChunk(Chunk *chunk) {
     chunk->count = 0;
     chunk->capacity = 0;
@@ -15,6 +19,10 @@ void initChunk(Chunk *chunk) {
     initValueArray(&chunk->constants);
 }
 
+/**
+ * Function to clear out memory from a chunk, and reinitialize it to a stable state.
+ * @param chunk
+ */
 void freeChunk(Chunk *chunk) {
     FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
     FREE_ARRAY(int, chunk->lines, chunk->capacity);
@@ -22,6 +30,13 @@ void freeChunk(Chunk *chunk) {
     initChunk(chunk);
 }
 
+/**
+ * Function that is used to append bytecode to chunk->code array and add code to it.
+ * Also captures the line numbers for debugging.
+ * @param chunk
+ * @param byte
+ * @param line
+ */
 void writeChunk(Chunk *chunk, uint8_t byte, int line) {
     if (chunk->capacity < chunk->count + 1) {
         int oldCapacity = chunk->capacity;

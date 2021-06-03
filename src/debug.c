@@ -7,6 +7,11 @@
 #include "debug.h"
 #include "value.h"
 
+/**
+ * Function to disassemble instructions in a chunk.
+ * @param chunk
+ * @param name
+ */
 void disassembleChunk(Chunk *chunk, const char *name) {
     printf("== %s ==\n", name);
 
@@ -16,6 +21,13 @@ void disassembleChunk(Chunk *chunk, const char *name) {
 
 }
 
+/**
+ * Function to handle opcodes dealing with constants.
+ * @param name
+ * @param chunk
+ * @param offset
+ * @return
+ */
 static int constantInstruction(const char *name, Chunk *chunk, int offset) {
     // we pull out the constant index from the byte succeeding the OP_CONSTANT instruction.
     uint8_t constant = chunk->code[offset + 1];
@@ -33,6 +45,12 @@ static int simpleInstruction(const char *name, int offset) {
     return offset + 1;
 }
 
+/**
+ * Function to disassemble an instruction present inside a chunk at a given offset.
+ * @param chunk
+ * @param offset
+ * @return
+ */
 int disassembleInstruction(Chunk *chunk, int offset) {
     printf("%04d ", offset);
     if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
@@ -45,6 +63,8 @@ int disassembleInstruction(Chunk *chunk, int offset) {
     switch (instruction) {
         case OP_CONSTANT:
             return constantInstruction("OP_CONSTANT", chunk, offset);
+        case OP_NEGATE:
+            return simpleInstruction("OP_NEGATE", offset);
         case OP_RETURN:
             return simpleInstruction("OP_RETURN", offset);
         default:

@@ -7,13 +7,22 @@
 
 #include "common.h"
 
+/**
+ * This macro calculates the new capacity based ona given current capacity.
+ */
 #define GROW_CAPACITY(capacity) \
         ((capacity) < 8 ? 8 : (capacity) * 2)
 
+/**
+ * This macro can help us create/grow an array to the required size.
+ */
 #define GROW_ARRAY(type, pointer, oldCount, newCount) \
         (type*)reallocate(pointer, sizeof(type) * (oldCount), \
         sizeof(type) * (newCount))
 
+/**
+ * This macro is used to clear an array and free up the memory.
+ */
 #define FREE_ARRAY(type, pointer, oldCount) \
         reallocate(pointer, sizeof(type) * (oldCount), 0)
 

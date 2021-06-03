@@ -10,6 +10,7 @@
 
 typedef enum {
     OP_RETURN,
+    OP_NEGATE,
     OP_CONSTANT
 } OpCode;
 
@@ -18,7 +19,7 @@ typedef struct {
     int capacity;
     // array of bytes.
     uint8_t *code;
-    int* lines;
+    int *lines;
     ValueArray constants;
 } Chunk;
 
