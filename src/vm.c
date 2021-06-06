@@ -121,6 +121,30 @@ static InterpretResult run() {
 }
 
 InterpretResult interpret(const char *source) {
-    compile(source);
-    return INTERPRET_OK;
+    Chunk chunk;
+    initChunk(&chunk);
+
+    /**
+     * We create a new empty chunk and pass it over to the compiler, the compiler will take the user's program
+     * and fill up the chunk with bytecode if the program doesn't have any errors.
+     * If te program has errors, compile() returns false and we discard the unusable chunk.
+     */
+    if (!compile(source, &chunk)) {
+        freeChunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
+
+    /**
+     * If the user's code compiled correctly, we send the completed chunk over to the VM to be executed.
+     */
+    vm.chunk = &chunk;
+    vm.ip = vm.chunk->code;
+
+    InterpretResult result = run();
+
+    /**
+     * Free up the memory once the chunk has been run and is no longer needed.
+     */
+    freeChunk(&chunk);
+    return result;
 }

@@ -5,6 +5,8 @@
 #ifndef CTOK_COMPILER_H
 #define CTOK_COMPILER_H
 
-void compile(const char *compile);
+#include "chunk.h"
+
+bool compile(const char *compile, Chunk *chunk);
 
 #endif //CTOK_COMPILER_H
