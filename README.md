@@ -3,7 +3,7 @@
 This repository is an effort to build a fast and performant interpreter for a programming language called **Tok** *(
 pronounced 'talk')*.
 
-ctok *(pronounced 'sea-talk')* is a Bytecode Virtual Machine written in C for Tok.
+ctok *(pronounced 'sea-talk')* is an interpreter that internally uses a compiler, and a Bytecode Virtual Machine written in C for Tok.
 
 This is a much faster and sophisticated implementation compared to
 [jtok, the interpreter I wrote for Tok in Java](https://github.com/JyotinderSingh/jtok).
