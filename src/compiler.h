@@ -6,7 +6,9 @@
 #define CTOK_COMPILER_H
 
 #include "chunk.h"
+#include "object.h"
+#include "vm.h"
 
-bool compile(const char *compile, Chunk *chunk);
+bool compile(const char* compile, Chunk* chunk);
 
 #endif //CTOK_COMPILER_H

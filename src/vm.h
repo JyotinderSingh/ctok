@@ -11,14 +11,15 @@
 #define STACK_MAX 256
 
 typedef struct {
-    Chunk *chunk;
+    Chunk* chunk;
     /**
     * we use a C pointer to keep track of where we are in the bytecode array (which instruction we need to execute next)
     * since it's faster than using an index to access something in an array.
     */
-    uint8_t *ip;    // instruction pointer.
+    uint8_t* ip;    // instruction pointer.
     Value stack[STACK_MAX];
-    Value *stackTop;
+    Value* stackTop;
+    Obj* objects;
 } VM;
 
 /**
@@ -30,11 +31,13 @@ typedef enum {
     INTERPRET_RUNTIME_ERROR
 } InterpretResult;
 
+extern VM vm;
+
 void initVM();
 
 void freeVM();
 
-InterpretResult interpret(const char *source);
+InterpretResult interpret(const char* source);
 
 void push(Value value);
 

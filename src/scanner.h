@@ -41,12 +41,12 @@ typedef struct {
      * Instead, we use the original source string as our character store.
      * We represent a lexeme by a pointer to its first character and the number of characters it contains.
      */
-    const char *start;
+    const char* start;
     int length;
     int line;
 } Token;
 
-void initScanner(const char *source);
+void initScanner(const char* source);
 
 Token scanToken();
 

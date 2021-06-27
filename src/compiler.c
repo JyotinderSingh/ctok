@@ -39,7 +39,7 @@ typedef enum {
 /*
  * ParseFn is just a typedef for a function type that takes no arguments and returns nothing.
  */
-typedef void(*ParseFn)();
+typedef void(* ParseFn)();
 
 /**
  * Structure that defines each row of our parsing table.
@@ -51,13 +51,13 @@ typedef struct {
 } ParseRule;
 
 Parser parser;
-Chunk *compilingChunk;
+Chunk* compilingChunk;
 
 /**
  * Utility method to return a pointer to the current chunk being compiled.
  * @return
  */
-static Chunk *currentChunk() {
+static Chunk* currentChunk() {
     return compilingChunk;
 }
 
@@ -66,7 +66,7 @@ static Chunk *currentChunk() {
  * @param token
  * @param message
  */
-static void errorAt(Token *token, const char *message) {
+static void errorAt(Token* token, const char* message) {
     // If the parser is in panic mode, we skip displaying useless cascading error messages.
     if (parser.panicMode) return;
 
@@ -93,7 +93,7 @@ static void errorAt(Token *token, const char *message) {
  * Often, we need to report an error at the location of the token we just consumed, we use this function for the same.
  * @param message
  */
-static void error(const char *message) {
+static void error(const char* message) {
     errorAt(&parser.previous, message);
 }
 
@@ -101,7 +101,7 @@ static void error(const char *message) {
  * When the scanner hands the parser an error token, we need to notify the user about this event using this function.
  * @param message
  */
-static void errorAtCurrent(const char *message) {
+static void errorAtCurrent(const char* message) {
     // We pull out the location of the current token to tell the user where the error actually occurred.
     errorAt(&parser.current, message);
 }
@@ -128,7 +128,7 @@ static void advance() {
  * @param type
  * @param message
  */
-static void consume(TokenType type, const char *message) {
+static void consume(TokenType type, const char* message) {
     if (parser.current.type == type) {
         advance();
         return;
@@ -206,7 +206,7 @@ static void endCompiler() {
 // Forward declarations.
 static void expression();
 
-static ParseRule *getRule(TokenType type);
+static ParseRule* getRule(TokenType type);
 
 static void parsePrecedence(Precedence precedence);
 
@@ -223,7 +223,7 @@ static void parsePrecedence(Precedence precedence);
  */
 static void binary() {
     TokenType operatorType = parser.previous.type;
-    ParseRule *rule = getRule(operatorType);
+    ParseRule* rule = getRule(operatorType);
     // Parse the right operand.
     parsePrecedence((Precedence) (rule->precedence + 1));
 
@@ -305,6 +305,15 @@ static void number() {
 }
 
 /**
+ * When the parser hits a string token, it calls this parse function.
+ * The +1 and -2 parts trim the leading and trailing quotation marks. It then creates a string object,
+ * wraps it in a Value, and adds it to the constant table.
+ */
+static void string() {
+    emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
+}
+
+/**
  * Function to compile unary operations
  */
 static void unary() {
@@ -358,7 +367,7 @@ ParseRule rules[] = {
         [TOKEN_LESS]          = {NULL, binary, PREC_COMPARISON},
         [TOKEN_LESS_EQUAL]    = {NULL, binary, PREC_COMPARISON},
         [TOKEN_IDENTIFIER]    = {NULL, NULL, PREC_NONE},
-        [TOKEN_STRING]        = {NULL, NULL, PREC_NONE},
+        [TOKEN_STRING]        = {string, NULL, PREC_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PREC_NONE},
         [TOKEN_AND]           = {NULL, NULL, PREC_NONE},
         [TOKEN_CLASS]         = {NULL, NULL, PREC_NONE},
@@ -411,7 +420,7 @@ static void parsePrecedence(Precedence precedence) {
  * @param type
  * @return
  */
-static ParseRule *getRule(TokenType type) {
+static ParseRule* getRule(TokenType type) {
     return &rules[type];
 }
 
@@ -420,7 +429,7 @@ static void expression() {
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
-bool compile(const char *source, Chunk *chunk) {
+bool compile(const char* source, Chunk* chunk) {
     initScanner(source);
     compilingChunk = chunk;
 

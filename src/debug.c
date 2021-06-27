@@ -12,7 +12,7 @@
  * @param chunk
  * @param name
  */
-void disassembleChunk(Chunk *chunk, const char *name) {
+void disassembleChunk(Chunk* chunk, const char* name) {
     printf("== %s ==\n", name);
 
     for (int offset = 0; offset < chunk->count;) {
@@ -28,7 +28,7 @@ void disassembleChunk(Chunk *chunk, const char *name) {
  * @param offset
  * @return
  */
-static int constantInstruction(const char *name, Chunk *chunk, int offset) {
+static int constantInstruction(const char* name, Chunk* chunk, int offset) {
     // we pull out the constant index from the byte succeeding the OP_CONSTANT instruction.
     uint8_t constant = chunk->code[offset + 1];
     // we print the name of the opcode being parsed, and the index of the constant value (not particularly useful to us humans)
@@ -40,7 +40,7 @@ static int constantInstruction(const char *name, Chunk *chunk, int offset) {
     return offset + 2;
 }
 
-static int simpleInstruction(const char *name, int offset) {
+static int simpleInstruction(const char* name, int offset) {
     printf("%s\n", name);
     return offset + 1;
 }
@@ -51,7 +51,7 @@ static int simpleInstruction(const char *name, int offset) {
  * @param offset
  * @return
  */
-int disassembleInstruction(Chunk *chunk, int offset) {
+int disassembleInstruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
     if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
         printf("   | ");
