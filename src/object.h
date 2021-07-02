@@ -44,6 +44,8 @@ struct Obj {
  * A string object contains an array of characters. Those are stored in a separate, heap allocated array.
  * We also store the number of bytes in the array - it isn't strictly necessary but it lets us tell how much memory is
  * allocated for the string without walking the array to find the null terminator.
+ * Also caches the hash for the string, helps in optimizing hash table lookups. Since strings are immutable in Tok,
+ * we don't need to worry about cache invalidation.
  *
  * Design note:
  * Because ObjString is an Obj, it also needs the state all Objs share. It accomplishes that by having the first
@@ -56,6 +58,7 @@ struct ObjString {
     Obj obj;
     int length;
     char* chars;
+    uint32_t hash;
 };
 
 ObjString* takeString(char* chars, int length);
