@@ -20,6 +20,7 @@ typedef struct {
     uint8_t* ip;    // instruction pointer.
     Value stack[STACK_MAX];
     Value* stackTop;
+    Table globals;
     Table strings;
     Obj* objects;
 } VM;

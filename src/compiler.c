@@ -231,6 +231,8 @@ static void statement();
 
 static void declaration();
 
+static uint8_t identifierConstant(Token* name);
+
 static ParseRule* getRule(TokenType type);
 
 static void parsePrecedence(Precedence precedence);
@@ -339,6 +341,25 @@ static void string() {
 }
 
 /**
+ * Emits the bytecode to read a global variable with a specific name.
+ * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_GLOBAL in the bytecode.
+ * @param name
+ */
+static void namedVariable(Token name) {
+    // Store the name if the token in the constant table, and store it's index in arg.
+    uint8_t arg = identifierConstant(&name);
+    // Emit the byte code for reading a global variable along with that variable's name's ObjString representation's index in the constant table as the operand to the bytecode.
+    emitBytes(OP_GET_GLOBAL, arg);
+}
+
+/**
+ * We use this function to hook up identifier tokens to the expression parser.
+ */
+static void variable() {
+    namedVariable(parser.previous);
+}
+
+/**
  * Function to compile unary operations
  */
 static void unary() {
@@ -391,7 +412,7 @@ ParseRule rules[] = {
         [TOKEN_GREATER_EQUAL] = {NULL, binary, PREC_COMPARISON},
         [TOKEN_LESS]          = {NULL, binary, PREC_COMPARISON},
         [TOKEN_LESS_EQUAL]    = {NULL, binary, PREC_COMPARISON},
-        [TOKEN_IDENTIFIER]    = {NULL, NULL, PREC_NONE},
+        [TOKEN_IDENTIFIER]    = {variable, NULL, PREC_NONE},
         [TOKEN_STRING]        = {string, NULL, PREC_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PREC_NONE},
         [TOKEN_AND]           = {NULL, NULL, PREC_NONE},
@@ -441,6 +462,39 @@ static void parsePrecedence(Precedence precedence) {
 }
 
 /**
+ * Takes a given token and adds its lexeme to the chunk's constant table as a string (ObjString).
+ * Global Variables are looked up by name at runtime. This means the VM needs access to the name.
+ * A whole string is too big to be stuffed into the bytecode stream as an operand, instead, it is stored as a string
+ * in the constant table and instruction then refers to the name by its index in the table.
+ * @param name Token to be used as the identifier.
+ * @return Index of the constant (ObjString) in the constant table.
+ */
+static uint8_t identifierConstant(Token* name) {
+    return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
+}
+
+/**
+ *  Parses a variable identifier.
+ * @param errorMessage error message to be displayed when the next token isn't a TOKEN_IDENTIFIER
+ * @return returns the index of the identifier in the constant table.
+ */
+static uint8_t parseVariable(const char* errorMessage) {
+    consume(TOKEN_IDENTIFIER, errorMessage);
+
+    // returns the index of the identifier string (the variable name) in the constant table.
+    return identifierConstant(&parser.previous);
+}
+
+/**
+ * Outputs the bytecode instruction that defines a new variable and stores its initial value.
+ * The index of the variable's name in the constant table is the instruction's operand.
+ * @param global index of the variable's name in the chunk's constant table.
+ */
+static void defineVariable(uint8_t global) {
+    emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+/**
  * Helper function to return a rule at a given index (according to the provided Token).
  * @param type
  * @return
@@ -458,6 +512,40 @@ static void expression() {
 }
 
 /**
+ * Parses a variable declaration.
+ */
+static void varDeclaration() {
+    // The 'var' keyword is followed by the name of the variable, we compile that using parseVariable.
+    // global stores the index of the identifier string (the variable name) present in the constant table.
+    uint8_t global = parseVariable("Expect variable name.");
+
+    // Then we look for an '='.
+    if (match(TOKEN_EQUAL)) {
+        // followed by an initializer expression.
+        // This will emit bytecode for whatever value is going to be stored in the variable.
+        expression();
+    } else {
+        // If the variable is not initialized, the compiler initializes it to 'nil'.
+        emitByte(OP_NIL);
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+    // emit the bytecode for defining a global.
+    defineVariable(global);
+}
+
+/**
+ * Parses an expression statement. Similar to parsing an expression, with an additional step to consume the semicolon and emits an OP_POP instruction.
+ * Semantically, an expression statement evaluates the expression and discards teh result.
+ * The compiler directly encodes that behaviour by emitting the OP_POP bytecode instruction.
+ */
+static void expressionStatement() {
+    expression();
+    consume(TOKEN_SEMICOLON, " Expect ';' after expression.");
+    emitByte(OP_POP);
+}
+
+/**
  * Parses the print statement. A print statement evaluates an expression and prints the result.
  * For this, it first parses and compiles the expression following the print token. After that it consumes the semicolon at the end.
  * Finally it emits the opcode for the print statement.
@@ -469,10 +557,51 @@ static void printStatement() {
 }
 
 /**
+ * Synchronizes the compiler when it enters panic mode.
+ * If we hit a compile error while parsing the previous statement, we enter panic mode.
+ * When that happens, after the statement we start synchronizing.
+ * Design Note: For Tok,statement boundaries are considered as a synchronization point.
+ */
+static void synchronize() {
+    parser.panicMode = false;
+
+    while (parser.current.type != TOKEN_EOF) {
+
+        // we look for a statement boundary.
+        if (parser.previous.type == TOKEN_SEMICOLON) return;
+
+        // Control flow statements also start new statements,
+        // so they are also treated as acceptable synchronization points.
+        switch (parser.current.type) {
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+            default:; // Do nothing.
+        }
+
+        // Advance to the next token.
+        advance();
+    }
+}
+
+/**
  * Parses a declaration.
  */
 static void declaration() {
-    statement();
+    if (match(TOKEN_VAR)) {
+        varDeclaration();
+    } else {
+        statement();
+    }
+
+    // We check in case the compiler is in panic mode, if so - we look for the next synchronization point.
+    if (parser.panicMode) synchronize();
 }
 
 /**
@@ -481,6 +610,8 @@ static void declaration() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else {
+        expressionStatement();
     }
 }
 

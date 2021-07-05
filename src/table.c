@@ -124,9 +124,9 @@ static void adjustCapacity(Table* table, int capacity) {
 
 /**
  * Utility function to set add/replace a key/value pair in a hash table.
- * @param table
- * @param key
- * @param value
+ * @param table pointer to the table instance.
+ * @param key key of the key/value pair to be stored.
+ * @param value value to be stored at the given key.
  * @return Returns true if a new entry was added, returns false if the key already existed and only the value was replaced.
  */
 bool tableSet(Table* table, ObjString* key, Value value) {

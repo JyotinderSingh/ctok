@@ -11,6 +11,7 @@
 #include "value.h"
 #include "vm.h"
 
+// This macro is used as a wrapper to help get the pointer back in the required Object type.
 #define ALLOCATE_OBJ(type, objectType) \
     (type*)allocateObject(sizeof(type), objectType)
 
@@ -87,9 +88,9 @@ ObjString* takeString(char* chars, int length) {
  * This function assumes that it cannot take ownership of the characters you pass in. Instead, it conservatively creates
  * a copy of the characters on the heap that the ObjString can own.
  * This is the right approach for string literals where the passed-in characters are in the middle of the source string.
- * @param chars
- * @param length
- * @return
+ * @param chars character array pointing to the string.
+ * @param length length of the string.
+ * @return ObjString* pointing to a newly allocated string object on the heap.
  */
 ObjString* copyString(const char* chars, int length) {
     uint32_t hash = hashString(chars, length);

@@ -44,10 +44,12 @@ static void runtimeError(const char* format, ...) {
 void initVM() {
     resetStack();
     vm.objects = NULL;
+    initTable(&vm.globals);
     initTable(&vm.strings);
 }
 
 void freeVM() {
+    freeTable(&vm.globals);
     freeTable(&vm.strings);
     freeObjects();
 }
@@ -109,10 +111,16 @@ static void concatenate() {
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 /**
- * Read constant treats the next number (in the next byte to which IP is pointing)
+ * READ_CONSTANT() treats the next number (in the next byte, to which IP is pointing)
  * as the index for the corresponding Value in the chunk's constant table.
  */
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+
+/**
+ * READ_STRING() treats the next number (in the next byte, to which IP is pointing)
+ * as the index for the corresponding ObjString in the chunk's constant table.
+ */
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 
 // Boilerplate for underlying implementation of all the binary operators.
 #define BINARY_OP(valueType, op) \
@@ -164,9 +172,39 @@ static InterpretResult run() {
             case OP_FALSE:
                 push(BOOL_VAL(false));
                 break;
+            case OP_POP:
+                pop();
+                break;
+            case OP_GET_GLOBAL: {
+                // read the name of the variable.
+                ObjString* name = READ_STRING();
+                Value value;
+                // Check if the variable is actually present in the hash table.
+                if (!tableGet(&vm.globals, name, &value)) {
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // push the value of the variable to the stack.
+                push(value);
+                break;
+            }
+            case OP_DEFINE_GLOBAL: {
+                // read the name of the variable.
+                ObjString* name = READ_STRING();
+                // Add the variable to the hashtable, with it's name as the key, and value as value.
+                tableSet(&vm.globals, name, peek(0));
+                // we pop the value of the variable after we've added it to the table.
+                // This ensure that the VM can still find the value if a garbage collection is triggered right in the
+                // middle of adding it to the hashtable. This is a distinct possibility since the hash table requires
+                // dynamic allocation when it resizes.
+                pop();
+                break;
+            }
             case OP_EQUAL: {
+                // get the two operands
                 Value b = pop();
                 Value a = pop();
+                // push the boolean result to the stack
                 push(BOOL_VAL(valuesEqual(a, b)));
                 break;
             }
@@ -178,10 +216,14 @@ static InterpretResult run() {
                 break;
             case OP_ADD: {
                 if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
+                    // if operands are strings, perform concatenation.
                     concatenate();
                 } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+                    // if operands are numbers, perform arithmetic addition.
+                    // get the two operands from the stack.
                     double b = AS_NUMBER(pop());
                     double a = AS_NUMBER(pop());
+                    // push the result onto the stack.
                     push(NUMBER_VAL(a + b));
                 } else {
                     runtimeError(
@@ -203,13 +245,18 @@ static InterpretResult run() {
                 push(BOOL_VAL(isFalsey(pop())));
                 break;
             case OP_NEGATE:
+                // make sure the operand is a number.
                 if (!IS_NUMBER(peek(0))) {
                     runtimeError("Operand must be a number.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
+                // push the result to the stack.
                 push(NUMBER_VAL(-AS_NUMBER(pop())));
                 break;
             case OP_PRINT: {
+                // pop the value from the stack when printing it.
+                // This is because print is a statement, and statements must have a net 0 impact on the stack.
+                // The value must have been pushed on the stack as a part of evaluating the expression following the TOKEN_PRINT.
                 printValue(pop());
                 printf("\n");
                 break;
@@ -222,6 +269,7 @@ static InterpretResult run() {
     }
 #undef READ_BYTE
 #undef READ_CONSTANT
+#undef READ_STRING
 #undef BINARY_OP
 }
 
@@ -232,7 +280,7 @@ InterpretResult interpret(const char* source) {
     /**
      * We create a new empty chunk and pass it over to the compiler, the compiler will take the user's program
      * and fill up the chunk with bytecode if the program doesn't have any errors.
-     * If te program has errors, compile() returns false and we discard the unusable chunk.
+     * If the program has errors, compile() returns false and we discard the unusable chunk.
      */
     if (!compile(source, &chunk)) {
         freeChunk(&chunk);
