@@ -39,7 +39,7 @@ typedef enum {
 /*
  * ParseFn is just a typedef for a function type that takes no arguments and returns nothing.
  */
-typedef void(* ParseFn)();
+typedef void(* ParseFn)(bool canAssign);
 
 /**
  * Structure that defines each row of our parsing table.
@@ -248,7 +248,7 @@ static void parsePrecedence(Precedence precedence);
  * When the VM is run, it will execute the left and the right operand code, in that order - leaving their values on the stack.
  * Then it executes the instruction for this operator - that pops the two values, performs the computation, and pushes the result.
  */
-static void binary() {
+static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = getRule(operatorType);
     // Parse the right operand.
@@ -294,7 +294,7 @@ static void binary() {
 /**
  * Function to handle literals.
  */
-static void literal() {
+static void literal(bool canAssign) {
     switch (parser.previous.type) {
         case TOKEN_FALSE:
             emitByte(OP_FALSE);
@@ -314,7 +314,7 @@ static void literal() {
  * Function to compile grouping expressions.
  * Assumes TOKEN_LEFT_PAREN has already been consumed.
  */
-static void grouping() {
+static void grouping(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.");
 }
@@ -322,7 +322,7 @@ static void grouping() {
 /**
  * Function to compile number literals.
  */
-static void number() {
+static void number(bool canAssign) {
     /**
      * We assume the token for the number literal has already been consumed and is stored in 'previous'.
      * We then take that lexeme and use the C stdlib to convert it to a double value.
@@ -336,7 +336,7 @@ static void number() {
  * The +1 and -2 parts trim the leading and trailing quotation marks. It then creates a string object,
  * wraps it in a Value, and adds it to the constant table.
  */
-static void string() {
+static void string(bool canAssign) {
     emitConstant(OBJ_VAL(copyString(parser.previous.start + 1, parser.previous.length - 2)));
 }
 
@@ -345,24 +345,35 @@ static void string() {
  * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_GLOBAL in the bytecode.
  * @param name
  */
-static void namedVariable(Token name) {
+static void namedVariable(Token name, bool canAssign) {
     // Store the name if the token in the constant table, and store it's index in arg.
     uint8_t arg = identifierConstant(&name);
-    // Emit the byte code for reading a global variable along with that variable's name's ObjString representation's index in the constant table as the operand to the bytecode.
-    emitBytes(OP_GET_GLOBAL, arg);
+
+    // We check to see if this is an assignment or a get call.
+    // In case of assignment, we'll see an '=' sign after the identifier.
+    if (canAssign && match(TOKEN_EQUAL)) {
+        // variable assignment.
+        // we compile the assigned value.
+        expression();
+        // Emit the byte code for variable assignment along with that variable's name's ObjString representation's index in the constant table as the operand to the bytecode.
+        emitBytes(OP_SET_GLOBAL, arg);
+    } else {
+        // Emit the byte code for reading a global variable along with that variable's name's ObjString representation's index in the constant table as the operand to the bytecode.
+        emitBytes(OP_GET_GLOBAL, arg);
+    }
 }
 
 /**
  * We use this function to hook up identifier tokens to the expression parser.
  */
-static void variable() {
-    namedVariable(parser.previous);
+static void variable(bool canAssign) {
+    namedVariable(parser.previous, canAssign);
 }
 
 /**
  * Function to compile unary operations
  */
-static void unary() {
+static void unary(bool canAssign) {
     // The leading token gets stored into 'operatorType'.
     TokenType operatorType = parser.previous.type;
 
@@ -452,12 +463,21 @@ static void parsePrecedence(Precedence precedence) {
         return;
     }
 
-    prefixRule();
+    // We don't want variable assignments breaking the precedence in cases such as a * b = c + d; where b might be assigned the value c + d.
+    // So to take care of such cases, we pass in a boolean that tells variable() if it can perform assignment or not.
+    bool canAssign = precedence <= PREC_ASSIGNMENT;
+    prefixRule(canAssign);
 
     while (precedence <= getRule(parser.current.type)->precedence) {
         advance();
         ParseFn infixRule = getRule(parser.previous.type)->infix;
-        infixRule();
+        infixRule(canAssign);
+    }
+
+    // If we had an invalid assignment target, we never would end up consuming the '='.
+    // This is a syntax error, and we report it.
+    if (canAssign && match(TOKEN_EQUAL)) {
+        error("Invalid assignment target.");
     }
 }
 

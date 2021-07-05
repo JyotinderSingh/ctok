@@ -108,6 +108,10 @@ static void concatenate() {
     push(OBJ_VAL(result));
 }
 
+/**
+ * Responsible for handling all the bytecode interpretation.
+ * @return <code>InterpretResult</code> indicating whether interpretation was successful or not.
+ */
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 /**
@@ -198,6 +202,23 @@ static InterpretResult run() {
                 // middle of adding it to the hashtable. This is a distinct possibility since the hash table requires
                 // dynamic allocation when it resizes.
                 pop();
+                break;
+            }
+            case OP_SET_GLOBAL: {
+                // Read the name of the variable.
+                ObjString* name = READ_STRING();
+                // Try setting the value of the variable in the hash table.
+                // - If it returns true - it means the key didn't exist in the table before, and was just added. This
+                //   This means that the variable did not before, and was just added.
+                //   We don't want this, so we delete it from the table, and throw a runtime error.
+                // - If it returns false - it means the key already existed on the table, and only its value was updated - which is what we want.
+                if (tableSet(&vm.globals, name, peek(0))) {
+                    tableDelete(&vm.globals, name);
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // NOTE: We don't pop the value off the stack in the end, since assignment is an expression so it needs to
+                // leave the value in there in case the assignment is nested inside some larger expression.
                 break;
             }
             case OP_EQUAL: {
