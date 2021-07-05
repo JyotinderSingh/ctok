@@ -138,6 +138,27 @@ static void consume(TokenType type, const char* message) {
 }
 
 /**
+ * Checks if the current token being pointed to is same as the one passed to it.
+ * @param type Token to be checked against
+ * @return true if tokens match, false otherwise.
+ */
+static bool check(TokenType type) {
+    return parser.current.type == type;
+}
+
+/**
+ * If the current token being parsed is same as the token passed to this function - it returns true and advances to the next token.
+ * Returns false otherwise and doesn't advance the pointer.
+ * @param type TokenType against which you want to check the current token being parsed.
+ * @return true if tokens match, false otherwise.
+ */
+static bool match(TokenType type) {
+    if (!check(type)) return false;
+    advance();
+    return true;
+}
+
+/**
  * After we parse and understand a piece of the source code, the next step is to translate it into a series of
  * bytecode instructions. We start this off by appending a single byte to the chunk.
  * @param byte
@@ -205,6 +226,10 @@ static void endCompiler() {
 
 // Forward declarations.
 static void expression();
+
+static void statement();
+
+static void declaration();
 
 static ParseRule* getRule(TokenType type);
 
@@ -424,11 +449,47 @@ static ParseRule* getRule(TokenType type) {
     return &rules[type];
 }
 
+/**
+ * Parses a single expression, using the rule table with the help of parsePrecedence to take care of the precedence of operations.
+ */
 static void expression() {
     // We simply parse the lowest precedence level, which subsumes all of teh higher precedence expressions too.
     parsePrecedence(PREC_ASSIGNMENT);
 }
 
+/**
+ * Parses the print statement. A print statement evaluates an expression and prints the result.
+ * For this, it first parses and compiles the expression following the print token. After that it consumes the semicolon at the end.
+ * Finally it emits the opcode for the print statement.
+ */
+static void printStatement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Expect ';' after value.");
+    emitByte(OP_PRINT);
+}
+
+/**
+ * Parses a declaration.
+ */
+static void declaration() {
+    statement();
+}
+
+/**
+ * Parses different kinds of statements that Tok supports.
+ */
+static void statement() {
+    if (match(TOKEN_PRINT)) {
+        printStatement();
+    }
+}
+
+/**
+ * Given the source code, this function compiles it to an intermediate bytecode representation.
+ * @param source character array representing the source code
+ * @param chunk Represents the current chunk being written. Acts like an output parameter.
+ * @return true if compilation succeeds, false otherwise.
+ */
 bool compile(const char* source, Chunk* chunk) {
     initScanner(source);
     compilingChunk = chunk;
@@ -437,8 +498,10 @@ bool compile(const char* source, Chunk* chunk) {
     parser.panicMode = false;
 
     advance();
-    expression();
-    consume(TOKEN_EOF, "Expect end of expression.");
+    while (!match(TOKEN_EOF)) {
+        declaration();
+    }
+
     endCompiler();
     return !parser.hadError;
 }
