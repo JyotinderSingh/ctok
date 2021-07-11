@@ -179,6 +179,21 @@ static InterpretResult run() {
             case OP_POP:
                 pop();
                 break;
+            case OP_GET_LOCAL: {
+                // Takes a single byte operand for the stack slot where the local lives.
+                // It loads the value from that index and then pushes it on top of the stack where later instructions can find it.
+                uint8_t slot = READ_BYTE();
+                push(vm.stack[slot]);
+                break;
+            }
+            case OP_SET_LOCAL: {
+                // Takes the assigned value from top of the stack and stores it in the stack slot corresponding to the local variable.
+                // NOTE: the value is not popped from the stack, since assignment is an expression, and every expression
+                // produces a value. The value of an assignment expression is the assigned value itself, so the VM just leaves the value on the stack.
+                uint8_t slot = READ_BYTE();
+                vm.stack[slot] = peek(0);
+                break;
+            }
             case OP_GET_GLOBAL: {
                 // read the name of the variable.
                 ObjString* name = READ_STRING();

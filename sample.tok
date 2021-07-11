@@ -3,3 +3,22 @@ var beverage = "cafe au lait";
 breakfast = "beignets with " + beverage;
 
 print breakfast;
+
+var a = 12;
+
+{
+    var b = a;
+    print a;
+    {
+        var c = b;
+        print "Different Values of c:";
+        print c;
+        c = 50;
+        print c;
+        c = "Yoo";
+        print c;
+        print "";
+        print "a from globals";
+        print a;
+    }
+}
