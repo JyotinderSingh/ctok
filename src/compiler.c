@@ -206,6 +206,23 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
 }
 
 /**
+ * Function to emit a looping instruction.
+ * Emits a new loop instruction, which unconditionally jumps backwards by a given offset.
+ * We calculate the offset from teh instruction we're currently at to the loopStart point that we want to jump back to.
+ * @param loopStart
+ */
+static void emitLoop(int loopStart) {
+    emitByte(OP_LOOP);
+
+    // +2 is to take into account the size of the OP_LOOP instruction's own operands, which we also need to jump over.
+    int offset = currentChunk()->count - loopStart + 2;
+    if (offset > UINT16_MAX) error("Loop body too large. I know this sucks, please bear with me.");
+
+    emitByte((offset >> 8) & 0xff);
+    emitByte(offset & 0xff);
+}
+
+/**
  * Emits a backpatching jump instruction.
  * The function first emits a bytecode instruction and writes a placeholder operand for the jump offset.
  * We use two bytes for the jump offset operand. A 16-bit jump offset lets us jump over 65,536 bytes of code.
@@ -435,7 +452,7 @@ static void number(bool canAssign) {
  * jump over the code for the right operand. The little dance effectively does a jump when the value is truthy.
  * @param canAssign
  */
-static void or_ (bool canAssign) {
+static void or_(bool canAssign) {
     // Jump to the right-hand operand if left-hand is false.
     int elseJump = emitJump(OP_JUMP_IF_FALSE);
     // VM will reach this bytecode instruction if the left hand value was true.
@@ -546,7 +563,7 @@ ParseRule rules[] = {
         [TOKEN_SLASH]         = {NULL, binary, PREC_FACTOR},
         [TOKEN_STAR]          = {NULL, binary, PREC_FACTOR},
         [TOKEN_BANG]          = {unary, NULL, PREC_NONE},
-        [TOKEN_BANG_EQUAL]    = {NULL, binary, PREC_NONE},
+        [TOKEN_BANG_EQUAL]    = {NULL, binary, PREC_EQUALITY},
         [TOKEN_EQUAL]         = {NULL, NULL, PREC_NONE},
         [TOKEN_EQUAL_EQUAL]   = {NULL, binary, PREC_EQUALITY},
         [TOKEN_GREATER]       = {NULL, binary, PREC_COMPARISON},
@@ -560,11 +577,11 @@ ParseRule rules[] = {
         [TOKEN_CLASS]         = {NULL, NULL, PREC_NONE},
         [TOKEN_ELSE]          = {NULL, NULL, PREC_NONE},
         [TOKEN_FALSE]         = {literal, NULL, PREC_NONE},
-        [TOKEN_FOR]           = {NULL, or_, PREC_OR},
+        [TOKEN_FOR]           = {NULL, NULL, PREC_NONE},
         [TOKEN_FUN]           = {NULL, NULL, PREC_NONE},
         [TOKEN_IF]            = {NULL, NULL, PREC_NONE},
         [TOKEN_NIL]           = {literal, NULL, PREC_NONE},
-        [TOKEN_OR]            = {NULL, NULL, PREC_NONE},
+        [TOKEN_OR]            = {NULL, or_, PREC_OR},
         [TOKEN_PRINT]         = {NULL, NULL, PREC_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PREC_NONE},
         [TOKEN_SUPER]         = {NULL, NULL, PREC_NONE},
@@ -888,6 +905,38 @@ static void printStatement() {
 }
 
 /**
+ * Function to compile 'while' statement.
+ * Similar to the 'if' handler, we compile the condition expression, surrounded by the mandatory parantheses.
+ * That's followed by a jump instruction that skips over the subsequent body statement if the condition is falsey.
+ * We patch the jump after compiling the body and take care to pop the condition value from the stack on either path.
+ * After the body, we call emitLoop to emit a 'loop' instruction. That instruction needs to know how far back to jump,
+ * we already recorded that at the start of the function in loopStart.
+ * After executing the body of the while loop, we jump all the way back to before the condition. That way, we re-evaluate
+ * the condition expression on each iteration. We store the chunk's current instruction count in loopStart to record the offset
+ * in the bytecode right before the condition expression we're about to compile, and then pass it to emitLoop.
+ */
+static void whileStatement() {
+    // point where want to loop back
+    int loopStart = currentChunk()->count;
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    // consume the condition expression.
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+    // Emit jump statement in case you need to skip over the body.
+    int exitJump = emitJump(OP_JUMP_IF_FALSE);
+    emitByte(OP_POP);
+    statement();
+    // Emit the looping instruction.
+    emitLoop(loopStart);
+
+    patchJump(exitJump);
+    // pop the condition value from the stack in case you jumped over the body.
+    emitByte(OP_POP);
+}
+
+/**
  * Synchronizes the compiler when it enters panic mode.
  * If we hit a compile error while parsing the previous statement, we enter panic mode.
  * When that happens, after the statement we start synchronizing.
@@ -943,6 +992,8 @@ static void statement() {
         printStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
+    } else if (match(TOKEN_WHILE)) {
+        whileStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();

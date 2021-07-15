@@ -304,7 +304,7 @@ static InterpretResult run() {
             }
             case OP_JUMP: {
                 uint16_t offset = READ_SHORT();
-                // Unlike OP_JUMP_IF_FALSE, this jump is unconditional.
+                // Unlike OP_JUMP_IF_FALSE, this is an unconditional jump forward by 'offset' instruction.
                 vm.ip += offset;
                 break;
             }
@@ -313,6 +313,12 @@ static InterpretResult run() {
                 uint16_t offset = READ_SHORT();
                 // if the current value on the stack (the result of the condition expression) is false, move the ip by the jump offset.
                 if (isFalsey(peek(0))) vm.ip += offset;
+                break;
+            }
+            case OP_LOOP: {
+                uint16_t offset = READ_SHORT();
+                // Unconditional jump back by 'offset' number of instructions.
+                vm.ip -= offset;
                 break;
             }
             case OP_RETURN: {

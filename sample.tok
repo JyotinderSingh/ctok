@@ -24,5 +24,20 @@ var a = 12;
 }
 
 if (!false and true) {
-    print "print statement inside if block";
+    print "print statement inside (!false and true) condition";
+}
+
+if (false or true) {
+    print "print statement inside (false or true) condition";
+}
+
+if (false or !true) {
+    print "print statement inside (false or !true) condition";
+}
+
+var count = 5;
+
+while(count != 0) {
+    print "This will print 5 times.";
+    count = count - 1;
 }
