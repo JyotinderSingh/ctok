@@ -428,6 +428,29 @@ static void number(bool canAssign) {
 }
 
 /**
+ * Function to compile logical 'or' operator.
+ * In an 'or' expression if teh left-hand side is truthy, then we skip over the right operand.
+ * Thus we need to jump when value is truthy.
+ * When the left-hand side is falsey, it does a tiny jump over the next statement. That statement is an unconditional
+ * jump over the code for the right operand. The little dance effectively does a jump when the value is truthy.
+ * @param canAssign
+ */
+static void or_ (bool canAssign) {
+    // Jump to the right-hand operand if left-hand is false.
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+    // VM will reach this bytecode instruction if the left hand value was true.
+    // This will make the instruction pointer jump to the end of the conditional expression (Since we already found one truthy value).
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(elseJump);
+    // Pop the value if left-hand side expression was falsey to make space for right-hand operand.
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_OR);
+    patchJump(endJump);
+}
+
+/**
  * When the parser hits a string token, it calls this parse function.
  * The +1 and -2 parts trim the leading and trailing quotation marks. It then creates a string object,
  * wraps it in a Value, and adds it to the constant table.
@@ -537,7 +560,7 @@ ParseRule rules[] = {
         [TOKEN_CLASS]         = {NULL, NULL, PREC_NONE},
         [TOKEN_ELSE]          = {NULL, NULL, PREC_NONE},
         [TOKEN_FALSE]         = {literal, NULL, PREC_NONE},
-        [TOKEN_FOR]           = {NULL, NULL, PREC_NONE},
+        [TOKEN_FOR]           = {NULL, or_, PREC_OR},
         [TOKEN_FUN]           = {NULL, NULL, PREC_NONE},
         [TOKEN_IF]            = {NULL, NULL, PREC_NONE},
         [TOKEN_NIL]           = {literal, NULL, PREC_NONE},
