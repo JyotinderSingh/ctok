@@ -332,6 +332,7 @@ static ParseRule* getRule(TokenType type);
 
 static void parsePrecedence(Precedence precedence);
 
+static void and_(bool canAssign);
 
 /**
  * Function to be used for infix parsing.
@@ -532,7 +533,7 @@ ParseRule rules[] = {
         [TOKEN_IDENTIFIER]    = {variable, NULL, PREC_NONE},
         [TOKEN_STRING]        = {string, NULL, PREC_NONE},
         [TOKEN_NUMBER]        = {number, NULL, PREC_NONE},
-        [TOKEN_AND]           = {NULL, NULL, PREC_NONE},
+        [TOKEN_AND]           = {NULL, and_, PREC_AND},
         [TOKEN_CLASS]         = {NULL, NULL, PREC_NONE},
         [TOKEN_ELSE]          = {NULL, NULL, PREC_NONE},
         [TOKEN_FALSE]         = {literal, NULL, PREC_NONE},
@@ -734,6 +735,24 @@ static void defineVariable(uint8_t global) {
         return;
     }
     emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+/**
+ * Function to parse the 'and' logical operator.
+ * At the point this function is called, the left-hand side expression has already been compiled.
+ * That means at runtime, its value will be on top of the stack.
+ * If that value is falsey, then we know the entire and must be false, so we skip the right operand and leave the left-hand
+ * side value as teh result of the entire expression.
+ * Otherwise, we discard teh left-hand value and evaluate the right operand which becomes the result of the whole 'and' operation.
+ * @param canAssign
+ */
+static void and_(bool canAssign) {
+    int endJump = emitJump(OP_JUMP_IF_FALSE);
+
+    emitByte(OP_POP);
+    parsePrecedence(PREC_AND);
+
+    patchJump(endJump);
 }
 
 /**

@@ -23,6 +23,6 @@ var a = 12;
     }
 }
 
-if (!false) {
+if (!false and true) {
     print "print statement inside if block";
 }
