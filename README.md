@@ -16,7 +16,7 @@ This is a much faster and sophisticated implementation compared to
 
 Head over to the [Documentation](/DOCUMENTATION.md) to see code examples and other language features!
 
-## Why on did I spend more than 3 months making this?
+## Why on earth did I spend more than 3 months making this?
 
 Honestly, just because I never took a compilers course in uni it felt like I was missing out on some essential
 knowledge. Compilers and programming languages have always felt magical to me - and that went behind them has always
