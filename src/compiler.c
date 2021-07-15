@@ -805,6 +805,9 @@ static void expressionStatement() {
  * Next, we compile the then body. Once that’s done, we know how far to jump.
  * So we go back and replace that placeholder offset with the real one now that we can calculate it.
  *
+ * The implementation ensures that every if statement has an implicit else branch even if teh user didn't write an else clause.
+ * In case they left it off, all the branch does is discard the condition value.
+ *
  */
 static void ifStatement() {
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
@@ -816,9 +819,19 @@ static void ifStatement() {
     // We emit an OP_JUMP_IF_FALSE instruction. It has an operand for how much to offset the ip - how many bytes of code to skip.
     // If the condition is falsey, it adjusts the ip by that amount.
     int thenJump = emitJump(OP_JUMP_IF_FALSE);
+    emitByte(OP_POP);
     statement();
 
+    // Jump instruction in case the if condition was true - we will need to jump over the else block.
+    // Unlike the OP_JUMP_IF_FALSE, this jump is unconditional, and always runs.
+    int elseJump = emitJump(OP_JUMP);
+
     patchJump(thenJump);
+    emitByte(OP_POP);
+
+    // Check if there's an else block after the if block.
+    if (match(TOKEN_ELSE)) statement();
+    patchJump(elseJump);
 }
 
 /**

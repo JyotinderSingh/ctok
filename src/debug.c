@@ -9,8 +9,8 @@
 
 /**
  * Function to disassemble instructions in a chunk.
- * @param chunk
- * @param name
+ * @param chunk chunk being disassembled
+ * @param name name of the instruction
  */
 void disassembleChunk(Chunk* chunk, const char* name) {
     printf("== %s ==\n", name);
@@ -23,9 +23,9 @@ void disassembleChunk(Chunk* chunk, const char* name) {
 
 /**
  * Function to handle opcodes dealing with constants.
- * @param name
- * @param chunk
- * @param offset
+ * @param name name of the instruction
+ * @param chunk chunk being disassembled
+ * @param offset offset of the instruction in the chunk's code array.
  * @return
  */
 static int constantInstruction(const char* name, Chunk* chunk, int offset) {
@@ -42,8 +42,8 @@ static int constantInstruction(const char* name, Chunk* chunk, int offset) {
 
 /**
  * Function to output debug information for simple instructions - just the name of the instruction.
- * @param name
- * @param offset
+ * @param name name of the instruction
+ * @param offset offset of the instruction in the chunk's code array.
  * @return
  */
 static int simpleInstruction(const char* name, int offset) {
@@ -53,9 +53,9 @@ static int simpleInstruction(const char* name, int offset) {
 
 /**
  * Function to output debug information for simple byte instructions.
- * @param name
- * @param chunk
- * @param offset
+ * @param name name of the instruction
+ * @param chunk chunk being disassembled
+ * @param offset offset of the instruction in the chunk's code array.
  * @return
  */
 static int byteInstruction(const char* name, Chunk* chunk, int offset) {
@@ -65,9 +65,25 @@ static int byteInstruction(const char* name, Chunk* chunk, int offset) {
 }
 
 /**
+ * Function to output the debug info for a jump instruction.
+ * @param name name of the instruction
+ * @param sign direction of the jump
+ * @param chunk chunk being disassembled
+ * @param offset offset of the instruction in the chunk's code array.
+ * @return
+ */
+static int jumpInstruction(const char* name, int sign, Chunk* chunk, int offset) {
+    // Read in the 2-byte (16 bit) jump offset
+    uint16_t jump = (uint16_t) (chunk->code[offset + 1] << 8);
+    jump |= chunk->code[offset + 2];
+    printf("%-16s %4d -> %d\n", name, offset, offset + 3 + sign * jump);
+    return offset + 3;
+}
+
+/**
  * Function to disassemble an instruction present inside a chunk at a given offset.
- * @param chunk
- * @param offset
+ * @param chunk chunk being disassembled
+ * @param offset offset of the instruction in the chunk's code array.
  * @return
  */
 int disassembleInstruction(Chunk* chunk, int offset) {
@@ -120,6 +136,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return simpleInstruction("OP_NEGATE", offset);
         case OP_PRINT:
             return simpleInstruction("OP_PRINT", offset);
+        case OP_JUMP:
+            return jumpInstruction("OP_JUMP", 1, chunk, offset);
+        case OP_JUMP_IF_FALSE:
+            return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
         case OP_RETURN:
             return simpleInstruction("OP_RETURN", offset);
         default:

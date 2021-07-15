@@ -302,11 +302,17 @@ static InterpretResult run() {
                 printf("\n");
                 break;
             }
+            case OP_JUMP: {
+                uint16_t offset = READ_SHORT();
+                // Unlike OP_JUMP_IF_FALSE, this jump is unconditional.
+                vm.ip += offset;
+                break;
+            }
             case OP_JUMP_IF_FALSE: {
-               // Read the operand for the instruction (the jump offset)
-               uint16_t offset = READ_SHORT();
-               // if the current value on the stack (the result of the condition expression) is false, move the ip by the jump offset.
-               if (isFalsey(peek(0))) vm.ip += offset;
+                // Read the operand for the instruction (the jump offset)
+                uint16_t offset = READ_SHORT();
+                // if the current value on the stack (the result of the condition expression) is false, move the ip by the jump offset.
+                if (isFalsey(peek(0))) vm.ip += offset;
                 break;
             }
             case OP_RETURN: {
