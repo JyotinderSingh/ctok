@@ -22,3 +22,7 @@ var a = 12;
         print a;
     }
 }
+
+if (!false) {
+    print "print statement inside if block";
+}

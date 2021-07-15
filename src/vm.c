@@ -121,6 +121,11 @@ static InterpretResult run() {
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 
 /**
+ * Yanks the next two bytes from the chunk and builds a 16 bit unsigned integer out of them.
+ */
+#define READ_SHORT() \
+    (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
+/**
  * READ_STRING() treats the next number (in the next byte, to which IP is pointing)
  * as the index for the corresponding ObjString in the chunk's constant table.
  */
@@ -297,6 +302,13 @@ static InterpretResult run() {
                 printf("\n");
                 break;
             }
+            case OP_JUMP_IF_FALSE: {
+               // Read the operand for the instruction (the jump offset)
+               uint16_t offset = READ_SHORT();
+               // if the current value on the stack (the result of the condition expression) is false, move the ip by the jump offset.
+               if (isFalsey(peek(0))) vm.ip += offset;
+                break;
+            }
             case OP_RETURN: {
                 // Exit Interpreter.
                 return INTERPRET_OK;
@@ -304,6 +316,7 @@ static InterpretResult run() {
         }
     }
 #undef READ_BYTE
+#undef READ_SHORT
 #undef READ_CONSTANT
 #undef READ_STRING
 #undef BINARY_OP

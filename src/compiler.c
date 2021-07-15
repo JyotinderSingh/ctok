@@ -205,6 +205,20 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte2);
 }
 
+/**
+ * Emits a backpatching jump instruction.
+ * The function first emits a bytecode instruction and writes a placeholder operand for the jump offset.
+ * We use two bytes for the jump offset operand. A 16-bit jump offset lets us jump over 65,536 bytes of code.
+ * @param instruction bytecode instruction to be generated
+ * @return offset of the emitted instruction in the chunk.
+ */
+static int emitJump(uint8_t instruction) {
+    emitByte(instruction);
+    emitByte(0xff);
+    emitByte(0xff);
+    return currentChunk()->count - 2;
+}
+
 static void emitReturn() {
     emitByte(OP_RETURN);
 }
@@ -238,6 +252,26 @@ static uint8_t makeConstant(Value value) {
 static void emitConstant(Value value) {
     // We emit bytes for the opcode (OP_CONSTANT) and it's operand (index of the corresponding constant).
     emitBytes(OP_CONSTANT, makeConstant(value));
+}
+
+/**
+ * Patches the incomplete jump instruction emitted by emitJump.
+ * It goes back to the bytecode and replaces the operand at the given location with the calculated jump offset.
+ * We call patchJump() right before we emit the next instruction that we want the jump to land on,
+ * so it uses the current bytecode count to determine how far to jump.
+ * @param offset distance by which it should jump back by, to patch the emitJump operand.
+ */
+static void patchJump(int offset) {
+    // -2 to adjust for the bytecode for the jump offset itself.
+    int jump = currentChunk()->count - offset - 2;
+
+    if (jump > UINT16_MAX) {
+        error("Too much code to jump over.");
+    }
+
+    // break the 16 bit offset into two 8 bit pieces.
+    currentChunk()->code[offset] = (jump >> 8) & 0xff;
+    currentChunk()->code[offset + 1] = jump & 0xff;
 }
 
 /**
@@ -595,7 +629,7 @@ static int resolveLocal(Compiler* compiler, Token* name) {
         if (identifiersEqual(name, &local->name)) {
             // If the depth of the local being scanned is set to -1, it means that it is only declared right now, and not defined.
             // We report an error in this case.
-            if(local->depth == -1) {
+            if (local->depth == -1) {
                 error("Can't read local variable in its own initializer.");
             }
             return i;
@@ -764,6 +798,30 @@ static void expressionStatement() {
 }
 
 /**
+ * Parses an 'if' statement.
+ * Compiles a condition expression, then emits an OP_JUMP_IF_FALSE instruction.
+ * To know how far we need to jump, we use a trick called backpatching.
+ * We emit the jump instruction first with a placeholder offset operand. We keep track of where that half-finished instruction is.
+ * Next, we compile the then body. Once that’s done, we know how far to jump.
+ * So we go back and replace that placeholder offset with the real one now that we can calculate it.
+ *
+ */
+static void ifStatement() {
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    // Compile the condition expression. At runtime we leave the condition value on top of the stack.
+    // We'll use that to determine whether to execute the 'then' branch or skip it.
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+    // We emit an OP_JUMP_IF_FALSE instruction. It has an operand for how much to offset the ip - how many bytes of code to skip.
+    // If the condition is falsey, it adjusts the ip by that amount.
+    int thenJump = emitJump(OP_JUMP_IF_FALSE);
+    statement();
+
+    patchJump(thenJump);
+}
+
+/**
  * Parses the print statement. A print statement evaluates an expression and prints the result.
  * For this, it first parses and compiles the expression following the print token. After that it consumes the semicolon at the end.
  * Finally it emits the opcode for the print statement.
@@ -828,6 +886,8 @@ static void declaration() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_IF)) {
+        ifStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();
