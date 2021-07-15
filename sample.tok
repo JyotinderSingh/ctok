@@ -41,3 +41,7 @@ while(count != 0) {
     print "This will print 5 times.";
     count = count - 1;
 }
+
+for(var i = 0; i < 5; i = i + 1) {
+    print "This for loop runs 5 times";
+}

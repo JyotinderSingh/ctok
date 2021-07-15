@@ -857,6 +857,79 @@ static void expressionStatement() {
 }
 
 /**
+ * Function to compile 'for' loops.
+ *
+ */
+static void forStatement() {
+    // In case of variable declarations, we only want them to be scoped to the for loop.
+    beginScope();
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
+
+    // initializer clause.
+    if (match(TOKEN_SEMICOLON)) {
+        // No initializer.
+    } else if (match(TOKEN_VAR)) {
+        // if the initializer consist of a variable declaration.
+        varDeclaration();
+    } else {
+        // if the initializer is an expression statement. We call expressionStatement() instead of expression().
+        // This is because it consumes the semicolon, and also emits an OP_POP instruction to discard the value from the stack.
+        // We don't want initializer leaving anything on the stack.
+        expressionStatement();
+    }
+
+    int loopStart = currentChunk()->count;
+
+    // Condition clause
+    int exitJump = -1;
+    // if a condition is present.
+    if (!match(TOKEN_SEMICOLON)) {
+        // parse the expression for the condition.
+        expression();
+        consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.");
+
+        // Jump out of the loop if the condition is false.
+        exitJump = emitJump(OP_JUMP_IF_FALSE);
+        emitByte(OP_POP); // Condition. Ensures we discard the value when the condition is true.
+    }
+
+    // Increment clause.
+    if (!match(TOKEN_RIGHT_PAREN)) {
+        // if increment clause is present.
+        // The increment clause textually appears before the body, but executes after it. So we jump over the increment,
+        // run the body, jump back up to the increment, run int, then go to the next iteration.
+        int bodyJump = emitJump(OP_JUMP); // unconditional jump to hop over the increment clause to the body of the loop the first time.
+        int incrementStart = currentChunk()->count;
+        // compile the increment expression itself (usually an assignment).
+        expression();
+        // pop the expression's value from the stack, we were only interested in the side effect, not the actual value produced.
+        emitByte(OP_POP);
+        consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        // loop instruction to take us back to the top of the 'for' loop - right before teh condition expression (if there is one).
+        // That loop happens right after the increment, since the increment happens at the end of each loop iteration.
+        emitLoop(loopStart);
+        // Then we change the loopStart to point to the offset where the increment expression begins.
+        // Later when we emit the loop instruction after the bofy statement, this will cause it to jump up to the increment expression
+        // instead of the loop like it does when there is no increment.
+        loopStart = incrementStart;
+        patchJump(bodyJump);
+    }
+
+    statement();
+    emitLoop(loopStart);
+
+    // If there is a condition clause, this is where we jump to once the condition becomes false.
+    if (exitJump != -1) {
+        patchJump(exitJump);
+        // pop the condition expression's value from the stack.
+        emitByte(OP_POP);
+    }
+    endScope();
+}
+
+/**
  * Parses an 'if' statement.
  * Compiles a condition expression, then emits an OP_JUMP_IF_FALSE instruction.
  * To know how far we need to jump, we use a trick called backpatching.
@@ -990,6 +1063,8 @@ static void declaration() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         printStatement();
+    } else if (match(TOKEN_FOR)) {
+        forStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
     } else if (match(TOKEN_WHILE)) {
