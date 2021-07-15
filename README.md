@@ -19,7 +19,7 @@ Head over to the [Documentation](/DOCUMENTATION.md) to see code examples and oth
 ## Why on earth did I spend more than 3 months making this?
 
 Honestly, just because I never took a compilers course in uni it felt like I was missing out on some essential
-knowledge. Compilers and programming languages have always felt magical to me - and that went behind them has always
+knowledge. Compilers and programming languages have always felt magical to me - and what went behind them has always
 seemed like a dark arcane art, only wielded by wizards. In simple words, I wanted to see what was behind this curtain of
 magic- and turns out, it's just a few thousand lines of code. Nothing else.
 
