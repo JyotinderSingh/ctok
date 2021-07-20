@@ -21,7 +21,7 @@ typedef enum {
  * Struct to store our different kinds of data types.
  * We maintain one field called type to track what kind of variable is currently stored in the memory.
  * We also use a union to store the actual bytes of the data in an efficient and overlapping manner.
- * We use 'as' for the name of teh union field since it reads nicely, almost like a cast when we pul
+ * We use 'as' for the name of the union field since it reads nicely, almost like a cast when we pul
  * the various values out.
  * The Obj type contains a pointer to the corresponding object stored at that location in the heap.
  */

@@ -6,6 +6,7 @@
 #define CTOK_OBJECT_H
 
 #include "common.h"
+#include "chunk.h"
 #include "value.h"
 
 /**
@@ -17,17 +18,20 @@
 /**
  * Macros that help us make sure if it's safe to case a value into a specific object type.
  */
+#define IS_FUNCTION(value)  isObjType(value, OBJ_FUNCTION);
 #define IS_STRING(value)    isObjType(value, OBJ_STRING)
 
 /**
  * Macros to cast an Obj value into a specific Object type.
  */
+#define AS_FUNCTION(value)  ((ObjFunction*)AS_OBJ(value))
 #define AS_STRING(value)    ((ObjString*)AS_OBJ(value))
 #define AS_CSTRING(value)   (((ObjString*)AS_OBJ(value))->chars)
 /**
  * Enums that define all the different kinds of objects supported by Tok.
  */
 typedef enum {
+    OBJ_FUNCTION,
     OBJ_STRING
 } ObjType;
 
@@ -38,6 +42,18 @@ struct Obj {
     ObjType type;
     struct Obj* next;
 };
+
+/**
+ * Functions are first class in Tok. Hence they are actual Tok objects.
+ */
+typedef struct {
+    Obj obj;
+    // number of parameters a function expects.
+    int arity;
+    Chunk chunk;
+    // we store the function name as well, handy for reporting errors.
+    ObjString* name;
+} ObjFunction;
 
 /**
  * Defines a String object, that internally makes use of the Obj struct to define object related information.
@@ -60,6 +76,8 @@ struct ObjString {
     char* chars;
     uint32_t hash;
 };
+
+ObjFunction* newFunction();
 
 ObjString* takeString(char* chars, int length);
 

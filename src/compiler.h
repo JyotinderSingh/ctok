@@ -9,6 +9,6 @@
 #include "object.h"
 #include "vm.h"
 
-bool compile(const char* compile, Chunk* chunk);
+ObjFunction* compile(const char* source);
 
 #endif //CTOK_COMPILER_H

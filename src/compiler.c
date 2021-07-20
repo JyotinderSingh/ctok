@@ -54,7 +54,7 @@ typedef struct {
 /**
  * Data structure backing the local variables.
  * The token name is used to compare the identifier's lexeme with each local's name to find a match.
- * The depth field records teh scope depth of the block where the local variable was declared.
+ * The depth field records the scope depth of the block where the local variable was declared.
  */
 typedef struct {
     Token name;
@@ -62,13 +62,27 @@ typedef struct {
 } Local;
 
 /**
+ * Enum to tell the compiler when it is compiling top-level code vs the body of a function.
+ */
+typedef enum {
+    TYPE_FUNCTION,
+    TYPE_SCRIPT
+} FunctionType;
+
+/**
  * A flat array of all the locals that are in the scope during each point in the compilation
  * process. They are ordered in the array in the order in which their declarations appear in the code.
  * Since the instruction operand we use to encode a local is a single byte, the VM has a hard limit
  * on the number of locals that can be in scope at once. This is the reason we can give our locals
  * a fixed size.
+ * Our top level code lives inside an automatically defined 'top-level' function. That way, the compiler is always
+ * within some kind of function body, and the VM always runs code by invoking a function.
+ * This makes our implementation a little simpler.
  */
 typedef struct {
+    // implicit top-level function for the top-level code.
+    ObjFunction* function;
+    FunctionType type;
     // Array to track the names of the variables in the current scope.
     Local locals[UINT8_COUNT];
     // tracks how many locals are in scope i.e. how many array slots are in use.
@@ -83,10 +97,12 @@ Chunk* compilingChunk;
 
 /**
  * Utility method to return a pointer to the current chunk being compiled.
+ * The current chunk is always the chunk owned by the function we're in the middle of compiling.
  * @return
  */
 static Chunk* currentChunk() {
-    return compilingChunk;
+    // return a reference to the chunk of the current function we are compiling(top-level or otherwise).
+    return &current->function->chunk;
 }
 
 /**
@@ -292,25 +308,48 @@ static void patchJump(int offset) {
 }
 
 /**
- * Initializes the compiler.
+ * Initializes the compiler for whatever kind of function we are compiling.
  * @param compiler
  */
-static void initCompiler(Compiler* compiler) {
+static void initCompiler(Compiler* compiler, FunctionType type) {
+    compiler->function = NULL;
+    compiler->type = type;
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
+    /**
+     * We create an ObjFunction in the compiler itself. Even though its a runtime representation of the function.
+     * The way to think of it is that a function is similar to a string or a number literal. It forms a bridge between
+     * the compile-time and runtime worlds. When you reach a function declaration - they produce a value of a built in type (ObjFunction).
+     * So the compiler creates the function objects during compilation. Then, at runtime, they are simply invoked.
+     */
+    compiler->function = newFunction();
     current = compiler;
+
+    /**
+     * The compiler's <code>locals</code> array keeps track of which stack slots are associated with which local variables
+     * or temporaries. The compiler implicitly claims stack slot zero for the VM's own internal use.
+     * We give it an empty name so that the user can't write an identifier that refers to it.
+     */
+    Local* local = &current->locals[current->localCount++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.length = 0;
 }
 
 /**
  * Clean up function.
  */
-static void endCompiler() {
+static ObjFunction* endCompiler() {
     emitReturn();
+    ObjFunction* function = current->function;
 #ifdef DEBUG_PRINT_CODE
     if (!parser.hadError) {
-        disassembleChunk(currentChunk(), "code");
+        // We check if the name of the function is null. User defined functions have names, but the implicit
+        // top level function does not.
+        disassembleChunk(currentChunk(), function->name != NULL ? function->name->chars : "<script>");
     }
 #endif
+    return function;
 }
 
 /**
@@ -899,7 +938,8 @@ static void forStatement() {
         // if increment clause is present.
         // The increment clause textually appears before the body, but executes after it. So we jump over the increment,
         // run the body, jump back up to the increment, run int, then go to the next iteration.
-        int bodyJump = emitJump(OP_JUMP); // unconditional jump to hop over the increment clause to the body of the loop the first time.
+        int bodyJump = emitJump(
+                OP_JUMP); // unconditional jump to hop over the increment clause to the body of the loop the first time.
         int incrementStart = currentChunk()->count;
         // compile the increment expression itself (usually an assignment).
         expression();
@@ -1084,11 +1124,10 @@ static void statement() {
  * @param chunk Represents the current chunk being written. Acts like an output parameter.
  * @return true if compilation succeeds, false otherwise.
  */
-bool compile(const char* source, Chunk* chunk) {
+ObjFunction* compile(const char* source) {
     initScanner(source);
     Compiler compiler;
-    initCompiler(&compiler);
-    compilingChunk = chunk;
+    initCompiler(&compiler, TYPE_SCRIPT);
 
     parser.hadError = false;
     parser.panicMode = false;
@@ -1098,6 +1137,9 @@ bool compile(const char* source, Chunk* chunk) {
         declaration();
     }
 
-    endCompiler();
-    return !parser.hadError;
+    // Our compiler returns a reference to the function it just compiled.
+    ObjFunction* function = endCompiler();
+    // We return the function object if the code compiled properly, otherwise we return NULL.
+    // This makes sure the VM doesn't try to execute a function that may contain invalid bytecode.
+    return parser.hadError ? NULL : function;
 }
