@@ -79,7 +79,9 @@ typedef enum {
  * within some kind of function body, and the VM always runs code by invoking a function.
  * This makes our implementation a little simpler.
  */
-typedef struct {
+typedef struct Compiler {
+    // Keeps track of the reference to the enclosing compiler instance.
+    struct Compiler* enclosing;
     // implicit top-level function for the top-level code.
     ObjFunction* function;
     FunctionType type;
@@ -312,6 +314,8 @@ static void patchJump(int offset) {
  * @param compiler
  */
 static void initCompiler(Compiler* compiler, FunctionType type) {
+    // Save a reference to the enclosing compiler instance.
+    compiler->enclosing = current;
     compiler->function = NULL;
     compiler->type = type;
     compiler->localCount = 0;
@@ -324,6 +328,14 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
      */
     compiler->function = newFunction();
     current = compiler;
+
+    // we call initCompiler right after we parse the function's name. That means we can simply grab the name from the previous token.
+    if (type != TYPE_SCRIPT) {
+        // NOTE: we create a copy of the name string. Since the lexeme points straight to the source code string.
+        // The string may get freed once the code is finished compiling. The function object we create in the compiler outlives
+        // the compiler and persists in realtime. So it needs its own heap-allocated name string that it can keep around.
+        current->function->name = copyString(parser.previous.start, parser.previous.length);
+    }
 
     /**
      * The compiler's <code>locals</code> array keeps track of which stack slots are associated with which local variables
@@ -349,6 +361,8 @@ static ObjFunction* endCompiler() {
         disassembleChunk(currentChunk(), function->name != NULL ? function->name->chars : "<script>");
     }
 #endif
+    // restore the enclosing compiler instance.
+    current = current->enclosing;
     return function;
 }
 
@@ -792,6 +806,9 @@ static uint8_t parseVariable(const char* errorMessage) {
  * Sets the scope depth of the local in the compiler. This marks the point when the variable is finally 'defined'.
  */
 static void markInitialized() {
+    // A top level function declaration can call this, when that happens, there is no local variable to mark as initialized.
+    // Since the function is bound to a global variable. Hence, we simply return.
+    if (current->scopeDepth == 0) return;
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
 
@@ -859,6 +876,63 @@ static void block() {
         declaration();
     }
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
+}
+
+/**
+ * Compiles a function - its parameter list and block body.
+ * Generates code that leaves the function on top of the stack.
+ * We create a separate compiler for each function being compiled. When we start compiling a function declaration,
+ * we create a new Compiler on the C stack and initialize it. <code>initCompiler()</code> sets that to be the current one.
+ * Then, as we compile the body, all of the functions that emit bytecode write to the chunk owned by the new compiler's function.
+ * After we reach the end of the function we call <code>endCompiler()</code>. That yields the newly compiled function object,
+ * which we store as a constant in the surrounding function's constant table. We get a reference back to the surrounding
+ * function using the linked list structure in our compiler.
+ * @param type the kind of function being compiled.
+ */
+static void function(FunctionType type) {
+    Compiler compiler;
+    initCompiler(&compiler, type);
+    // The beginScope() doesn't have a corresponding endScope() call. Because we end Compiler completely when we reach
+    // the end of the function body.
+    beginScope();
+
+    consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+    // In case the parameter list is not empty, parse the parameters.
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            // arity gets incremented with each parameter we encounter.
+            current->function->arity++;
+            if (current->function->arity > 255) {
+                errorAtCurrent("Can't have more than 255 parameters.");
+            }
+            // Semantically, a parameter is simply a local variable declared in the outermost lexical scope of the function body.
+            // These variables get initialized later when we pass arguments into function calls.
+            uint8_t constant = parseVariable("Expect parameter name.");
+            defineVariable(constant);
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block();
+
+    ObjFunction* function = endCompiler();
+    emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+}
+
+/**
+ * Parses function declaration.
+ * Functions are first-class values, and a function declaration simply creates adn stores one ina  newly declared variable.
+ * So we parse the name just like any other variable declaration. A function declaration at the top level will bind the
+ * function to a global variable. Inside a block or other function, a function declaration creates its own local variable.
+ */
+static void funDeclaration() {
+    uint8_t global = parseVariable("Expect function name.");
+    // To support recursion, we mark a function declaration as initialized, before completely parsing it. Unlike in case of local variables.
+    markInitialized();
+    function(TYPE_FUNCTION);
+    defineVariable(global);
 }
 
 /**
@@ -1087,7 +1161,9 @@ static void synchronize() {
  * Parses a declaration.
  */
 static void declaration() {
-    if (match(TOKEN_VAR)) {
+    if (match(TOKEN_FUN)) {
+        funDeclaration();
+    } else if (match(TOKEN_VAR)) {
         varDeclaration();
     } else {
         statement();
