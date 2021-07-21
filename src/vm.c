@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <time.h>
 
 #include "common.h"
 #include "compiler.h"
@@ -17,6 +18,17 @@
 VM vm;
 
 /**
+ * Native clock function that returns the elapsed time since the program started running, in seconds.
+ * Handy for benchmarking.
+ * @param argCount
+ * @param args
+ * @return elapsed time since the program started running, in seconds
+ */
+static Value clockNative(int argCount, Value* args) {
+    return NUMBER_VAL((double) clock() / CLOCKS_PER_SEC);
+}
+
+/**
  * Function to reset the VM's stack
  * Resets the stack's top pointer to the first element
  * not that we don't need to really clear out the values from the array itself
@@ -27,6 +39,11 @@ static void resetStack() {
     vm.frameCount = 0;
 }
 
+/**
+ * Handles runtime errors.
+ * @param format
+ * @param ...
+ */
 static void runtimeError(const char* format, ...) {
     va_list args;
     va_start(args, format);
@@ -53,6 +70,25 @@ static void runtimeError(const char* format, ...) {
 }
 
 /**
+ * Helper to define a new native function.
+ * Takes a poniter to a C function and the name it will be knows as in Tok. We wrap the function in an ObjNative
+ * and then store that in a global variable with the given name.
+ * NOTE: we push and pop the name and the function on the stack because both <code>copyString()</code> and
+ * <code>newNative</code> dynamically allocate memory. That means they can potentially trigger a garbage collection in our
+ * Garbage Collector. If that happens, we need to ensure the collector knows we're not done with the name and ObjFunction
+ * so that it doesn't free them out from under us. Storing them as a stack value accomplishes that.
+ * @param name Name by which the native function will be known from, in Tok.
+ * @param function pointer to the native C function.
+ */
+static void defineNative(const char* name, NativeFn function) {
+    push(OBJ_VAL(copyString(name, (int) strlen(name))));
+    push(OBJ_VAL(newNative(function)));
+    tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    pop();
+    pop();
+}
+
+/**
  * Function to initialize the VM before use.
  */
 void initVM() {
@@ -60,6 +96,9 @@ void initVM() {
     vm.objects = NULL;
     initTable(&vm.globals);
     initTable(&vm.strings);
+
+    // initialize native functions.
+    defineNative("clock", clockNative);
 }
 
 void freeVM() {
@@ -132,6 +171,15 @@ static bool callValue(Value callee, int argCount) {
         switch (OBJ_TYPE(callee)) {
             case OBJ_FUNCTION:
                 return call(AS_FUNCTION(callee), argCount);
+            case OBJ_NATIVE: {
+                NativeFn native = AS_NATIVE(callee);
+                // If the object being called is a native function, we invoke the C function right here.
+                Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= argCount + 1;
+                // Stuff the result back into the stack.
+                push(result);
+                return true;
+            }
             default:
                 break; // Non-callable object type.
         }

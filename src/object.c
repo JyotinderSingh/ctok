@@ -48,6 +48,18 @@ ObjFunction* newFunction() {
 }
 
 /**
+ * Utility function to create a new Native Function.
+ * Takes a C function pointer to wrap in an ObjNative. It sets up the object header and stores the function.
+ * @param function pointer to the native C function.
+ * @return
+ */
+ObjNative* newNative(NativeFn function) {
+    ObjNative* native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
+    native->function = function;
+    return native;
+}
+
+/**
  * Performs the heavy lifting for defining a new string. It acts like a constructor in an OOP language.
  * @param chars
  * @param length
@@ -141,6 +153,9 @@ void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
         case OBJ_FUNCTION:
             printFunction(AS_FUNCTION(value));
+            break;
+        case OBJ_NATIVE:
+            printf("<native fn>");
             break;
         case OBJ_STRING:
             printf("%s", AS_CSTRING(value));
