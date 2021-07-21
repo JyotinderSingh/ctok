@@ -34,10 +34,21 @@ static void runtimeError(const char* format, ...) {
     va_end(args);
     fputs("\n", stderr);
 
-    CallFrame* frame = &vm.frames[vm.frameCount - 1];
-    size_t instruction = frame->ip - frame->function->chunk.code - 1;
-    int line = frame->function->chunk.lines[instruction];
-    fprintf(stderr, "[line %d] in script\n", line);
+    // After printing the error message, we start walking the call stack from th etop (the most recently called function)
+    // to bottom (the top-level code). For each frame, we find the line number that corresponds to the current ip
+    // inside that frame's function. Then we print that line number along with the name of the function.
+    for (int i = vm.frameCount - 1; i >= 0; i--) {
+        CallFrame* frame = &vm.frames[i];
+        ObjFunction* function = frame->function;
+        size_t instruction = frame->ip - function->chunk.code - 1;
+        fprintf(stderr, "[line %d] in ",
+                function->chunk.lines[instruction]);
+        if (function->name == NULL) {
+            fprintf(stderr, "script\n");
+        } else {
+            fprintf(stderr, "%s()\n", function->name->chars);
+        }
+    }
     resetStack();
 }
 
@@ -82,6 +93,51 @@ Value pop() {
  */
 static Value peek(int distance) {
     return vm.stackTop[-1 - distance];
+}
+
+/**
+ * Initializes a new CallFrame for a Tok Function call,
+ * @param function pointer to a ObjFunction for the Object/function being called.
+ * @param argCount number of arguments passed to the function.
+ * @return
+ */
+static bool call(ObjFunction* function, int argCount) {
+    if (argCount != function->arity) {
+        runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+        return false;
+    }
+
+    if (vm.frameCount == FRAMES_MAX) {
+        runtimeError("Stack overflow.");
+        return false;
+    }
+
+    CallFrame* frame = &vm.frames[vm.frameCount++];
+    frame->function = function;
+    frame->ip = function->chunk.code;
+    // -1 is for the stack slot zero set aside for method calls.
+    frame->slots = vm.stackTop - argCount - 1;
+    return true;
+}
+
+/**
+ * Method to handle Tok Function calls.
+ * Handles error cases.
+ * @param callee
+ * @param argCount
+ * @return
+ */
+static bool callValue(Value callee, int argCount) {
+    if (IS_OBJ(callee)) {
+        switch (OBJ_TYPE(callee)) {
+            case OBJ_FUNCTION:
+                return call(AS_FUNCTION(callee), argCount);
+            default:
+                break; // Non-callable object type.
+        }
+    }
+    runtimeError("Can only call functions and classes.");
+    return false;
 }
 
 /**
@@ -330,9 +386,49 @@ static InterpretResult run() {
                 frame->ip -= offset;
                 break;
             }
+            case OP_CALL: {
+                // we need to know the function being called and the number of arguments passed to it.
+                // We get the latter from the instruction's operand.
+                int argCount = READ_BYTE();
+                // The argCount also tells us where to find the function on the stack by counting past the argument
+                // slots from the top of the stack. We hand this data off to a separate callValue handler.
+                // If that returns false, it means teh call caused some sort of runtime error. When that happens, we abort the interpreter.
+                // If the callValue() was successful, there will be a new CallFrame stack for the called function.
+                // The run() function has its own cached pointer to the current frame, we need to update that.
+                if (!callValue(peek(argCount), argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                /**
+                 * Since the bytecode dispatch loop reads from the <code>frame</code> variable, when the VM goes to
+                 * execute the next instruction, it will read the <code>ip</code> from the newly called function's
+                 * CallFrame and jump to its code.
+                 */
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_RETURN: {
-                // Exit Interpreter.
-                return INTERPRET_OK;
+                // When a function returns a value, that value will be on top of the stack.
+                // We pop that value out into a result variable.
+                Value result = pop();
+                // discard the CallFrame.
+                vm.frameCount--;
+                // if we just discarded the very last CallFrame, it means we've finished executing the top-level code.
+                // The entire program is done, so we pop the main script function from the stack and then exit the interpreter.
+                if (vm.frameCount == 0) {
+                    pop();
+                    return INTERPRET_OK;
+                }
+
+                // discard all the slots the callee was using for its parameters and local variables.
+                // This includes the same slots the caller used to pass the arguments (if any).
+                vm.stackTop = frame->slots;
+
+                // The top of the stack is now right at the beginning of the returning function's stack window.
+                // We push the return value back onto the stack at this new, lower location.
+                push(result);
+                // Update the run() function's cached pointer to the current frame.
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
             }
         }
     }
@@ -360,10 +456,7 @@ InterpretResult interpret(const char* source) {
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
     push(OBJ_VAL(function));
-    CallFrame* frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
-    frame->ip = function->chunk.code;
-    frame->slots = vm.stack;;
+    call(function, 0);
 
     return run();
 

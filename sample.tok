@@ -48,7 +48,8 @@ for(var i = 0; i < 5; i = i + 1) {
 
 
 fun areWeHavingItYet() {
-  print "Yes we are!";
+  print "geddit?";
+  return "Yes we are!";
 }
 
-print areWeHavingItYet;
+print areWeHavingItYet();

@@ -255,6 +255,8 @@ static int emitJump(uint8_t instruction) {
 }
 
 static void emitReturn() {
+    // implicit return value of any function is NIL.
+    emitByte(OP_NIL);
     emitByte(OP_RETURN);
 }
 
@@ -404,6 +406,8 @@ static void parsePrecedence(Precedence precedence);
 
 static void and_(bool canAssign);
 
+static uint8_t argumentList();
+
 /**
  * Function to be used for infix parsing.
  * When an infix parsing function is called, the entire left hand operation has already been compiled,
@@ -455,6 +459,19 @@ static void binary(bool canAssign) {
         default:
             return; //unreachable.
     }
+}
+
+/**
+ * Method to handle Tok function calls.
+ * We've already consumed the '(' when calling this, so next we compile the arguments.
+ * We get back the number of arguments from <code>argumentList()</code>.
+ * Each argument expression generates code that leaves its value on the stack in preparation for the next call.
+ * After that, we emit a new OP_CALL instruction to invoke the function, using the argument count as an operand.
+ * @param canAssign
+ */
+static void call(bool canAssign) {
+    uint8_t argCount = argumentList();
+    emitBytes(OP_CALL, argCount);
 }
 
 /**
@@ -604,7 +621,7 @@ static void unary(bool canAssign) {
  * - the precedence of an infix expression that uses that token as an operator.
  */
 ParseRule rules[] = {
-        [TOKEN_LEFT_PAREN]    = {grouping, NULL, PREC_NONE},
+        [TOKEN_LEFT_PAREN]    = {grouping, call, PREC_CALL},
         [TOKEN_RIGHT_PAREN]   = {NULL, NULL, PREC_NONE},
         [TOKEN_LEFT_BRACE]    = {NULL, NULL, PREC_NONE},
         [TOKEN_RIGHT_BRACE]   = {NULL, NULL, PREC_NONE},
@@ -831,6 +848,28 @@ static void defineVariable(uint8_t global) {
         return;
     }
     emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+/**
+ * Function to parse an argument list of a function call.
+ * We keep track of the number of arguments we've encountered in <code>argCount</code> and keep parsing the arguments
+ * separated by commas with a call to <code>expression()</code>.
+ * @return number of arguments encountered in the parsed function call.
+ */
+static uint8_t argumentList() {
+    uint8_t argCount = 0;
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            expression();
+            // Since our 8 bit operands cannot represent more than 255.
+            if (argCount == 255) {
+                error("Can't have more than 255 arguments.");
+            }
+            argCount++;
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+    return argCount;
 }
 
 /**
@@ -1092,6 +1131,26 @@ static void printStatement() {
 }
 
 /**
+ * Parses a return statement. Compiler reaches here after reading TOKEN_RETURN.
+ */
+static void returnStatement() {
+    // We can't use a return statement inside top-level code.
+    if (current->type == TYPE_SCRIPT) {
+        error("Can't return from top-level code.");
+    }
+
+    // In case no value is returned, emit an implicit NIL value by calling emitReturn().
+    if (match(TOKEN_SEMICOLON)) {
+        emitReturn();
+    } else {
+        // In case a value is returned, parse that value and emit the OP_RETURN.
+        expression();
+        consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+        emitByte(OP_RETURN);
+    }
+}
+
+/**
  * Function to compile 'while' statement.
  * Similar to the 'if' handler, we compile the condition expression, surrounded by the mandatory parantheses.
  * That's followed by a jump instruction that skips over the subsequent body statement if the condition is falsey.
@@ -1183,6 +1242,8 @@ static void statement() {
         forStatement();
     } else if (match(TOKEN_IF)) {
         ifStatement();
+    } else if (match(TOKEN_RETURN)) {
+        returnStatement();
     } else if (match(TOKEN_WHILE)) {
         whileStatement();
     } else if (match(TOKEN_LEFT_BRACE)) {
@@ -1208,6 +1269,7 @@ ObjFunction* compile(const char* source) {
     parser.hadError = false;
     parser.panicMode = false;
 
+    // primes the compiler, by reading the first token.
     advance();
     while (!match(TOKEN_EOF)) {
         declaration();
