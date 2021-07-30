@@ -18,11 +18,11 @@
  * The <code>slots</code> field points into the VM's value stack at the first slot that this function can use.
  * Each frame will store it's own <code>ip</code>. When we return from a function, the VM will jump to the <code>ip</code>
  * of the caller's CallFrame and resume from there.
- * The <code>function</code> pointer points to the function being called. We use that to look up constants, and a few other things.
- * Each time a function is called, we create one of these structs.
+ * The <code>closure</code> pointer points to the closure of the function being called.
+ * We use that to look up constants, and a few other things. Each time a function is called, we create one of these structs.
  */
 typedef struct {
-    ObjFunction* function;
+    ObjClosure* closure;
     uint8_t* ip;
     Value* slots;
 } CallFrame;

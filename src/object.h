@@ -18,13 +18,15 @@
 /**
  * Macros that help us make sure if it's safe to case a value into a specific object type.
  */
-#define IS_FUNCTION(value)  isObjType(value, OBJ_FUNCTION);
+#define IS_CLOSURE(value)   isObjType(value, OBJ_CLOSURE)
+#define IS_FUNCTION(value)  isObjType(value, OBJ_FUNCTION)
 #define IS_NATIVE(value)    isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)    isObjType(value, OBJ_STRING)
 
 /**
  * Macros to cast an Obj value into a specific Object type.
  */
+#define AS_CLOSURE(value)      ((ObjClosure*)AS_OBJ(value))
 #define AS_FUNCTION(value)  ((ObjFunction*)AS_OBJ(value))
 #define AS_NATIVE(value)    (((ObjNative*)AS_OBJ(value))->function)
 #define AS_STRING(value)    ((ObjString*)AS_OBJ(value))
@@ -33,6 +35,7 @@
  * Enums that define all the different kinds of objects supported by Tok.
  */
 typedef enum {
+    OBJ_CLOSURE,
     OBJ_FUNCTION,
     OBJ_NATIVE,
     OBJ_STRING
@@ -95,6 +98,17 @@ struct ObjString {
     char* chars;
     uint32_t hash;
 };
+
+/**
+ * Every ObjFunction is wrapped in an ObjClosure, even if the function doesn't actually close over and capture any surrounding
+ * local variables.
+ */
+typedef struct {
+    Obj obj;
+    ObjFunction* function;
+} ObjClosure;
+
+ObjClosure* newClosure(ObjFunction* function);
 
 ObjFunction* newFunction();
 

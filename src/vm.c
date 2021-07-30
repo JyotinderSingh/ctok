@@ -56,7 +56,7 @@ static void runtimeError(const char* format, ...) {
     // inside that frame's function. Then we print that line number along with the name of the function.
     for (int i = vm.frameCount - 1; i >= 0; i--) {
         CallFrame* frame = &vm.frames[i];
-        ObjFunction* function = frame->function;
+        ObjFunction* function = frame->closure->function;
         size_t instruction = frame->ip - function->chunk.code - 1;
         fprintf(stderr, "[line %d] in ",
                 function->chunk.lines[instruction]);
@@ -140,9 +140,9 @@ static Value peek(int distance) {
  * @param argCount number of arguments passed to the function.
  * @return
  */
-static bool call(ObjFunction* function, int argCount) {
-    if (argCount != function->arity) {
-        runtimeError("Expected %d arguments but got %d.", function->arity, argCount);
+static bool call(ObjClosure* closure, int argCount) {
+    if (argCount != closure->function->arity) {
+        runtimeError("Expected %d arguments but got %d.", closure->function->arity, argCount);
         return false;
     }
 
@@ -152,8 +152,8 @@ static bool call(ObjFunction* function, int argCount) {
     }
 
     CallFrame* frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
-    frame->ip = function->chunk.code;
+    frame->closure = closure;
+    frame->ip = closure->function->chunk.code;
     // -1 is for the stack slot zero set aside for method calls.
     frame->slots = vm.stackTop - argCount - 1;
     return true;
@@ -169,8 +169,8 @@ static bool call(ObjFunction* function, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
-            case OBJ_FUNCTION:
-                return call(AS_FUNCTION(callee), argCount);
+            case OBJ_CLOSURE:
+                return call(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE: {
                 NativeFn native = AS_NATIVE(callee);
                 // If the object being called is a native function, we invoke the C function right here.
@@ -230,7 +230,7 @@ static InterpretResult run() {
  * as the index for the corresponding Value in the chunk's constant table.
  */
 #define READ_CONSTANT() \
-    (frame->function->chunk.constants.values[READ_BYTE()])
+    (frame->closure->function->chunk.constants.values[READ_BYTE()])
 /**
  * Yanks the next two bytes from the chunk and builds a 16 bit unsigned integer out of them.
  */
@@ -276,7 +276,8 @@ static InterpretResult run() {
          * The offset is supposed to be an integer byte offset,
          * hence we do a little pointer math to convert ip back to a relative offset from the beginning of the bytecode.
          */
-        disassembleInstruction(&frame->function->chunk, (int) (frame->ip - frame->function->chunk.code));
+        disassembleInstruction(&frame->closure->function->chunk,
+                               (int) (frame->ip - frame->closure->function->chunk.code));
 #endif
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
@@ -454,6 +455,14 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_CLOSURE: {
+                // Read the function object from the constant table.
+                ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
+                // Wrap it in a closure object and push it onto the stack.
+                ObjClosure* closure = newClosure(function);
+                push(OBJ_VAL(closure));
+                break;
+            }
             case OP_RETURN: {
                 // When a function returns a value, that value will be on top of the stack.
                 // We pop that value out into a result variable.
@@ -503,8 +512,13 @@ InterpretResult interpret(const char* source) {
     ObjFunction* function = compile(source);
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
+    // We wrap the raw function returned by the compiler in a closure, and pass it into the VM.
+    // We push it onto the stack to make sure the GC won't clean it up in the middle of execution.
     push(OBJ_VAL(function));
-    call(function, 0);
+    ObjClosure* closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+    call(closure, 0);
 
     return run();
 

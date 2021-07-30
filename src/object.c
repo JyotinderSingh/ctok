@@ -34,6 +34,17 @@ static Obj* allocateObject(size_t size, ObjType type) {
 }
 
 /**
+ * Utility function to create a new ObjClosure instance.
+ * @param function
+ * @return
+ */
+ObjClosure* newClosure(ObjFunction* function) {
+    ObjClosure* closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+    closure->function = function;
+    return closure;
+}
+
+/**
  * Utility function to create a new Tok Function.
  * Unlike strings, we create this object in a blank state. We populate the properties later when function gets created.
  * @return
@@ -151,6 +162,9 @@ static void printFunction(ObjFunction* function) {
  */
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_CLOSURE:
+            printFunction(AS_CLOSURE(value)->function);
+            break;
         case OBJ_FUNCTION:
             printFunction(AS_FUNCTION(value));
             break;

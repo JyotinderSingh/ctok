@@ -957,7 +957,8 @@ static void function(FunctionType type) {
     block();
 
     ObjFunction* function = endCompiler();
-    emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+    // We emit an OP_CLOSURE instruction which takes a single operand that represents a constant table index for the function.
+    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
 }
 
 /**
