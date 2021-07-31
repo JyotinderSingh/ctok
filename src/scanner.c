@@ -132,10 +132,13 @@ static void skipWhitespace() {
             case '\t':
                 advance();
                 break;
+                // newline
             case '\n':
                 scanner.line++;
                 advance();
                 break;
+                // newline
+                // comment
             case '/':
                 if (peekNext() == '/') {
                     // A comment goes until the end of the line.
@@ -143,6 +146,8 @@ static void skipWhitespace() {
                 } else {
                     return;
                 }
+                break;
+                // comment
             default:
                 return;
         }

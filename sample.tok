@@ -35,6 +35,8 @@ if (false or !true) {
     print "print statement inside (false or !true) condition";
 }
 
+// Loops
+
 var count = 5;
 
 while(count != 0) {
@@ -46,6 +48,7 @@ for(var i = 0; i < 5; i = i + 1) {
     print "This for loop runs 5 times";
 }
 
+// Functions
 
 fun areWeHavingItYet() {
   print "geddit?";
@@ -54,6 +57,7 @@ fun areWeHavingItYet() {
 
 print areWeHavingItYet();
 
+// Closures
 
 fun outer() {
   var x = "value";
