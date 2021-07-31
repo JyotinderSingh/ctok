@@ -37,6 +37,7 @@ static void resetStack() {
     vm.stackTop = vm.stack;
     // The CallFrame stack is empty at the start.
     vm.frameCount = 0;
+    vm.openUpvalues = NULL;
 }
 
 /**
@@ -186,6 +187,68 @@ static bool callValue(Value callee, int argCount) {
     }
     runtimeError("Can only call functions and classes.");
     return false;
+}
+
+/**
+ * Function to close over a local variable.
+ * @param local pointer to the captured local's slot in the surrounding function's stack window.
+ * @return reference to the ObjUpvalue that was dynamically allocated.
+ */
+static ObjUpvalue* captureUpvalue(Value* local) {
+    ObjUpvalue* prevUpvalue = NULL;
+    ObjUpvalue* upvalue = vm.openUpvalues;
+
+    // We want all the references to a closed over local variable to share the same copy of the upvalue. Hence, we do the following:
+    // Start at the head of the openUpvalue's list, which is the upvalue closest to the top of the stack.
+    // We walk through the list iterating past every upvalue pointing to slot above the one we're looking for.
+    // While we do that, we keep track of the preceding upvalue on the list - since, we'll need to update that node's
+    // next pointer if we end up inserting a node after it.
+    while (upvalue != NULL && upvalue->location > local) {
+        prevUpvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    // condition: We found an existing upvalue capturing the variable, so we reuse this upvalue.
+    if (upvalue != NULL && upvalue->location == local) {
+        return upvalue;
+    }
+
+    // We reach here in either of two cases:
+    // 1. we exited the list traversal by going past the end of the list.
+    // 2. we exited the list traversal by stopping on the first upvalue whose stack slot is below the one we're looking for.
+    ObjUpvalue* createdUpvalue = newUpvalue(local);
+    createdUpvalue->next = upvalue;
+
+    // In either case, we need to insert the new upvalue before the object pointed at by the upvalue (which may be NULL if we hit the end of the list)
+    if (prevUpvalue == NULL) {
+        vm.openUpvalues = createdUpvalue;
+    } else {
+        prevUpvalue->next = createdUpvalue;
+    }
+
+    return createdUpvalue;
+}
+
+/**
+ * Function responsible for closing an upvalue.
+ * Takes a pointer to a stack slot. It closes every open upvalue it can find that points to that slot or any slot above
+ * it on the stack.
+ * Upvalues get closed as follows:
+ * First, we copy the variable's value into the <code>closed</code> field in the ObjUpvalue. That's where the closed-over
+ * variables live on the heap. The <code>OP_GET_UPVALUE</code> and <code>OP_SET_UPVALUE</code> instructions need to look
+ * for the variable there after it's been moved.
+ * @param last pointer to a stack slot where the variable to be closed resides.
+ */
+static void closeUpvalues(Value* last) {
+    // We walk the VM's list of open upvalues, from top to bottom. If an upvalue's location points into a range of slots
+    // we're closing, we close the upvalue. Otherwise, once we reach an upvalue outside of the range, we know the rest
+    // will be too, so we stop iterating.
+    while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
+        ObjUpvalue* upvalue = vm.openUpvalues;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        vm.openUpvalues = upvalue->next;
+    }
 }
 
 /**
@@ -355,6 +418,19 @@ static InterpretResult run() {
                 // leave the value in there in case the assignment is nested inside some larger expression.
                 break;
             }
+            case OP_GET_UPVALUE: {
+                // index into the current function's upvalue array.
+                uint8_t slot = READ_BYTE();
+                // we look up the corresponding upvalue and dereference its location pointer to read the value in that slot.
+                push(*frame->closure->upvalues[slot]->location);
+                break;
+            }
+            case OP_SET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                // pick the value on the top of the stack and store it into the slot pointed to by the chosen upvalue.
+                *frame->closure->upvalues[slot]->location = peek(0);
+                break;
+            }
             case OP_EQUAL: {
                 // get the two operands
                 Value b = pop();
@@ -461,12 +537,45 @@ static InterpretResult run() {
                 // Wrap it in a closure object and push it onto the stack.
                 ObjClosure* closure = newClosure(function);
                 push(OBJ_VAL(closure));
+
+                // We iterate over each upvalue the closure expects. For each one, we read a pair of operand bytes.
+                // If the upvalue closes over a local variable in the enclosing function, we let captureUpvalue() do the work.
+                // Otherwise, we capture an upvalue from the surrounding function. An OP_CLOSURE instruction is emitted
+                // at the end of a function declaration. At the moment we are executing that declaration, the current
+                // function is the surrounding one. That means the current function's closure is stored in the CallFrame
+                // at the top of the callstack. So, to grab an upvalue from the enclosing function, we can read it right
+                // here from the frame local variable, which caches a reference to that CallFrame.
+                for (int i = 0; i < closure->upvalueCount; i++) {
+                    uint8_t isLocal = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+                    if (isLocal) {
+                        // We need to calculate the argument to pass to captureUpvalue. We need to grab a pointer to
+                        // the captured local's slot in the surrounding function's stack window. That window begins at
+                        // frame->slots, which points to slot zero. Adding 'index' offsets that to the local slot we want to capture.
+                        closure->upvalues[i] = captureUpvalue(frame->slots + index);
+                    } else {
+                        closure->upvalues[i] = frame->closure->upvalues[index];
+                    }
+                }
                 break;
             }
+            case OP_CLOSE_UPVALUE:
+                // The variable we want to hoist is at the top of the stack. We pass the address of the variable's stack slot
+                // to closeUpvalues, which is responsible for closing the upvalue and moving the local from the stack to the heap.
+                closeUpvalues(vm.stackTop - 1);
+                // After that, the VM is free to discard the stack slot, which it does by calling pop()
+                pop();
+                break;
             case OP_RETURN: {
                 // When a function returns a value, that value will be on top of the stack.
                 // We pop that value out into a result variable.
                 Value result = pop();
+                // The compiler does not emit any instructions at the end of the outermost block scope that defines a
+                // function body. That scope contains the function's parameters and any locals declared immediately inside the function.
+                // Those need to get closed too, so we do that here.
+                // By passing the first slot in the function's stack window, we close every remaining open upvalue owned
+                // by the returning function.
+                closeUpvalues(frame->slots);
                 // discard the CallFrame.
                 vm.frameCount--;
                 // if we just discarded the very last CallFrame, it means we've finished executing the top-level code.

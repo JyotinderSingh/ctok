@@ -38,7 +38,8 @@ typedef enum {
     OBJ_CLOSURE,
     OBJ_FUNCTION,
     OBJ_NATIVE,
-    OBJ_STRING
+    OBJ_STRING,
+    OBJ_UPVALUE
 } ObjType;
 
 /**
@@ -56,6 +57,7 @@ typedef struct {
     Obj obj;
     // number of parameters a function expects.
     int arity;
+    int upvalueCount;
     Chunk chunk;
     // we store the function name as well, handy for reporting errors.
     ObjString* name;
@@ -100,12 +102,30 @@ struct ObjString {
 };
 
 /**
+ * Runtime representation of an Upvalue.
+ */
+typedef struct ObjUpvalue {
+    Obj obj;
+    // field to point to the closed-over variable. This is a pointer to a Value and not the Value itself.
+    // This allows effects of operations on the Value to be visible outside the executing function as well.
+    Value* location;
+    // field where the value of the upvalue will live once it is closed. (The original reference goes out of scope)
+    Value closed;
+    // pointer to the next upvalue in the list of upvalues.
+    struct ObjUpvalue* next;
+} ObjUpvalue;
+
+/**
  * Every ObjFunction is wrapped in an ObjClosure, even if the function doesn't actually close over and capture any surrounding
  * local variables.
  */
 typedef struct {
     Obj obj;
     ObjFunction* function;
+    // pointer to a dynamically allocated array of pointers to upvalues. We also store the number of elements in the array.
+    ObjUpvalue** upvalues;
+    // number of elements in the upvalues array.
+    int upvalueCount;
 } ObjClosure;
 
 ObjClosure* newClosure(ObjFunction* function);
@@ -117,6 +137,8 @@ ObjNative* newNative(NativeFn function);
 ObjString* takeString(char* chars, int length);
 
 ObjString* copyString(const char* chars, int length);
+
+ObjUpvalue* newUpvalue(Value* slot);
 
 void printObject(Value value);
 

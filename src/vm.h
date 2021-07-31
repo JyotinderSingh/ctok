@@ -15,36 +15,41 @@
 
 /**
  * A CallFrame represents a single on-going function call.
- * The <code>slots</code> field points into the VM's value stack at the first slot that this function can use.
- * Each frame will store it's own <code>ip</code>. When we return from a function, the VM will jump to the <code>ip</code>
- * of the caller's CallFrame and resume from there.
  * The <code>closure</code> pointer points to the closure of the function being called.
  * We use that to look up constants, and a few other things. Each time a function is called, we create one of these structs.
  */
 typedef struct {
     ObjClosure* closure;
+    /**
+     * Each frame will store it's own <code>ip</code>. When we return from a function, the VM will jump to the <code>ip</code>
+     * of the caller's CallFrame and resume from there.
+     */
     uint8_t* ip;
+    /**
+     * The <code>slots</code> field points into the VM's value stack at the first slot that this function can use.
+     */
     Value* slots;
 } CallFrame;
 
 /**
  * Struct for managing the VM instance.
- * <code>frames</code> is an array for storing the CallFrames for function calls.
- * <code>frameCount</code> stores the current height of the CallFrame stack.
- * <code>stack</code> contains all the runtime values for the VM.
- * <code>stackTop</code> stores the height of the Value stack.
- * <code>globals</code> is a hash table storing all the global variables.
- * <code>strings</code> is a hashtable containing pointers to all the string objects in the VM, and supports string interning.
- * <code>objects</code> stores all the different kinds of runtime objects for the VM.
  */
 typedef struct {
+    /// <code>frames</code> is an array for storing the CallFrames for function calls.
     CallFrame frames[FRAMES_MAX];
+    /// <code>frameCount</code> stores the current height of the CallFrame stack.
     int frameCount;
-
+    /// <code>stack</code> contains all the runtime values for the VM.
     Value stack[STACK_MAX];
+    /// <code>stackTop</code> stores the height of the Value stack.
     Value* stackTop;
+    /// <code>globals</code> is a hash table storing all the global variables.
     Table globals;
+    /// <code>strings</code> is a hashtable containing pointers to all the string objects in the VM, and supports string interning.
     Table strings;
+    /// <code>openUpvalues</code> is the list of open upvalues present in the VM at a particular instant of time.
+    ObjUpvalue* openUpvalues;
+    /// <code>objects</code> stores all the different kinds of runtime objects for the VM.
     Obj* objects;
 } VM;
 

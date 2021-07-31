@@ -12,11 +12,11 @@
 /**
  * When this flag is defined we use the debug module to print out the chunk's bytecode.
  */
-#define DEBUG_PRINT_CODE
+//#define DEBUG_PRINT_CODE
 /**
  * When this flag is defined the VM disassembles and prints each instruction right before executing it.
  */
-#define DEBUG_TRACE_EXECUTION
+//#define DEBUG_TRACE_EXECUTION
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 

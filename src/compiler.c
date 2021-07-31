@@ -53,13 +53,25 @@ typedef struct {
 
 /**
  * Data structure backing the local variables.
- * The token name is used to compare the identifier's lexeme with each local's name to find a match.
- * The depth field records the scope depth of the block where the local variable was declared.
  */
 typedef struct {
+    // The token name is used to compare the identifier's lexeme with each local's name to find a match.
     Token name;
+    // The depth field records the scope depth of the block where the local variable was declared.
     int depth;
+    // Tells if this particular local is captured by some closure. This field is true if the local is captured by any later nested function declaration.
+    bool isCaptured;
 } Local;
+
+/**
+ * Data structure to maintain a list of upvalues for the closures.
+ */
+typedef struct {
+    // stores info about which local slot the upvalue is capturing.
+    uint8_t index;
+    // the isLocal flag controls whether the closure captures a local variable or an upvalue from the surrounding function.
+    bool isLocal;
+} Upvalue;
 
 /**
  * Enum to tell the compiler when it is compiling top-level code vs the body of a function.
@@ -70,6 +82,7 @@ typedef enum {
 } FunctionType;
 
 /**
+ * Data structure to back the compiler implementation.
  * A flat array of all the locals that are in the scope during each point in the compilation
  * process. They are ordered in the array in the order in which their declarations appear in the code.
  * Since the instruction operand we use to encode a local is a single byte, the VM has a hard limit
@@ -89,6 +102,8 @@ typedef struct Compiler {
     Local locals[UINT8_COUNT];
     // tracks how many locals are in scope i.e. how many array slots are in use.
     int localCount;
+    // Maintans upvalue references for closures.
+    Upvalue upvalues[UINT8_COUNT];
     // scopeDepth tracks the number of blocks surrounding the current bit of code being compiled.
     int scopeDepth;
 } Compiler;
@@ -207,7 +222,7 @@ static bool match(TokenType type) {
 /**
  * After we parse and understand a piece of the source code, the next step is to translate it into a series of
  * bytecode instructions. We start this off by appending a single byte to the chunk.
- * @param byte
+ * @param byte bytecode instruction / operand to be emitted
  */
 static void emitByte(uint8_t byte) {
     writeChunk(currentChunk(), byte, parser.previous.line);
@@ -346,6 +361,7 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
      */
     Local* local = &current->locals[current->localCount++];
     local->depth = 0;
+    local->isCaptured = false;
     local->name.start = "";
     local->name.length = 0;
 }
@@ -382,9 +398,15 @@ static void beginScope() {
 static void endScope() {
     current->scopeDepth--;
 
-    // Clear out all of the exiting scope's variables.
+    // Clear out exiting scope's variables.
     while (current->localCount > 0 && current->locals[current->localCount - 1].depth > current->scopeDepth) {
-        emitByte(OP_POP);
+        // We can tell which variables are closed over and need to get hoisted up onto the stack.
+        if (current->locals[current->localCount - 1].isCaptured) {
+            emitByte(OP_CLOSE_UPVALUE);
+        } else {
+            // if variable is not closed over, we can pop it off the stack.
+            emitByte(OP_POP);
+        }
         current->localCount--;
     }
 }
@@ -397,6 +419,8 @@ static void statement();
 static void declaration();
 
 static int resolveLocal(Compiler* compiler, Token* name);
+
+static int resolveUpvalue(Compiler* compiler, Token* name);
 
 static uint8_t identifierConstant(Token* name);
 
@@ -560,6 +584,11 @@ static void namedVariable(Token name, bool canAssign) {
     if (arg != -1) {
         getOp = OP_GET_LOCAL;
         setOp = OP_SET_LOCAL;
+    } else if ((arg = resolveUpvalue(current, &name)) != -1) {
+        // The resolveUpvalue() function looks for a local variable declared in any of the surrounding functions.
+        // If it finds one, it returns an "upvalue index" for that variable, otherwise it returns -1 to indicate the variable wasn't found.
+        getOp = OP_GET_UPVALUE;
+        setOp = OP_SET_UPVALUE;
     } else {
         arg = identifierConstant(&name);
         getOp = OP_GET_GLOBAL;
@@ -723,7 +752,7 @@ static bool identifiersEqual(Token* a, Token* b) {
 
 /**
  * Function to resolve a local variable in the current scope.
- * At runtime, we load and store the locals using the stack slot index, so that's what the comiler needs to calculate after
+ * At runtime, we load and store the locals using the stack slot index, so that's what the compiler needs to calculate after
  * it resolves the variable. Whenever a variable is declared, we append it to the locals array in the Compiler.
  * This means the first local variable is at index zero, next one at index one, and so on.
  * In other words, the locals array in the compiler has the exact same layout as the VM's stack will have at runtime.
@@ -751,6 +780,83 @@ static int resolveLocal(Compiler* compiler, Token* name) {
 }
 
 /**
+ * The compiler maintains an array of upvalue structures to track the closed over identifiers that it has resolved in the
+ * body of each function. We know the compiler's Local array mirrors the stack stack slot indexes where the locals live at runtime.
+ * The upvalue array works the same way. The indexes in the compiler's array match the indexes where the upvalues will
+ * live in ObjClosure at runtime.
+ * The function adds a new upvalue to the array. It also keeps track of the number of upvalues the function uses.
+ * It stores this count directly in the ObjFunction because we need this number at runtime as well.
+ * The index field tracks the closed-over local variable's slot index. That way the compiler knows which variable in the
+ * enclosing function needs to be captured.
+ * @param compiler instance of the compiler to which the upvalue reference is to be added to
+ * @param index index of the upvalue in the enclosing function's Local array
+ * @param isLocal
+ * @return index of the created upvalue in the function's upvalue list. This index is operand to OP_GET_UPVALUE & OP_SET_UPVALUE.
+ */
+static int addUpvalue(Compiler* compiler, uint8_t index, bool isLocal) {
+    int upvalueCount = compiler->function->upvalueCount;
+
+    // Since a function might reference the same variable in the surrounding function multiple times. In that case, we don't
+    // want to waste time and memory creating a separate upvalue for each identifier expression. So, before adding a new upvalue
+    // we first check to see if the function already has an upvalue that closes over that variable.
+    for (int i = 0; i < upvalueCount; i++) {
+        Upvalue* upvalue = &compiler->upvalues[i];
+        if (upvalue->index == index && upvalue->isLocal == isLocal) {
+            return i;
+        }
+    }
+
+    // Check for overflow of upvalues array.
+    if (upvalueCount == UINT8_COUNT) {
+        error("Too many closure variables in function.");
+        return 0;
+    }
+
+    compiler->upvalues[upvalueCount].isLocal = isLocal;
+    compiler->upvalues[upvalueCount].index = index;
+    return compiler->function->upvalueCount++;
+}
+
+/**
+ * Function to resolve a variable in an enclosing function's scope.
+ * We call this after failing to resolve a local variable in the current function's scope, so we know the variable isn't in the current compiler.
+ * First, we look for a matching variable in the enclosing function. If we find one, we capture that local and return. This is the base case.
+ * Otherwise, we look for a local variable beyond the immediately enclosing function. We do this by recursively calling resolveUpvalue()
+ * on the enclosing compiler, not the current one. This series of resolveUpvalue calls works its way along the chain of
+ * nested compilers until it hits one of the base cases - either it finds an actual local variable to capture or it runs
+ * out of compilers.
+ * When the local variable is found, the most deeply nested call to resolveUpvalue captures it and returns the upvalue index.
+ * That returns to the next call for the inner function declaration, that call captures the upvalue from the surrounding
+ * function and so on. As each nested call to resolveUpvalue returns, we drill back down to the innermost function declaration
+ * where the identifier we are resolving appears. At each step along the way, we add an upvalue to the intervening function
+ * and pass the resulting upvalue index down to the next call.
+ * @param compiler
+ * @param name
+ * @return
+ */
+static int resolveUpvalue(Compiler* compiler, Token* name) {
+    // Since each compiler stores a pointer to the compiler for the enclosing function, and these pointers form a linked chain
+    // that goes all the way to the root compiler for the top-level code. Thus, if the enclosing compiler is NULL, we know we've
+    // reached the outermost function without finding a local variable. The variable must be global, so we return -1.
+    if (compiler->enclosing == NULL) return -1;
+
+    // Try resolving the variable in the enclosing function.
+    int local = resolveLocal(compiler->enclosing, name);
+    if (local != -1) {
+        // if we end up creating an upvalue for a local variable, we mark it as captured.
+        compiler->enclosing->locals[local].isCaptured = true;
+        return addUpvalue(compiler, (uint8_t) local, true);
+    }
+
+    int upvalue = resolveUpvalue(compiler->enclosing, name);
+    if (upvalue != -1) {
+        return addUpvalue(compiler, (uint8_t) upvalue, false);
+    }
+
+    return -1;
+}
+
+/**
  * Function to initialize the next available local in the compiler's array of variables.
  * Stores the variable's name and the depth of the scope that owns the variable.
  * @param name The token representing the variable.
@@ -763,6 +869,7 @@ static void addLocal(Token name) {
     Local* local = &current->locals[current->localCount++];
     local->name = name;
     local->depth = -1;
+    local->isCaptured = false;
 }
 
 /**
@@ -959,6 +1066,15 @@ static void function(FunctionType type) {
     ObjFunction* function = endCompiler();
     // We emit an OP_CLOSURE instruction which takes a single operand that represents a constant table index for the function.
     emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+    // For each upvalue the closure captures, there are two single-byte operands. Each pair of operands specifies what that
+    // upvalue captures. If the first byte is 1, it captures a local variable in the enclosing function.
+    // If 0, it captures one of the enclosing function's upvalues.
+    // The next byte is the local slot or the upvalue index to capture.
+    for (int i = 0; i < function->upvalueCount; ++i) {
+        emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+        emitByte(compiler.upvalues[i].index);
+    }
 }
 
 /**
