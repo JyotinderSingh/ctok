@@ -17,7 +17,7 @@ number by a string—then the error is detected and reported at runtime.
 
 ### Automatic Memory Managment
 
-Tok includes its own Garbage Collector which makes use of **Tracing Garbage Collection**.
+Tok includes its own Garbage Collector which makes use of **Mark-Sweep Garbage Collection**.
 
 ### Data Types
 

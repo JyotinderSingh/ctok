@@ -1,20 +1,20 @@
 # ctok
 
+A fast and performant interpreter for a programming language called **Tok** *(
+pronounced 'talk')*.
+
 ```
 // Your first Tok Program
 print "Hello, Tok!";
 ```
 
-This repository is an effort to build a fast and performant interpreter for a programming language called **Tok** *(
-pronounced 'talk')*.
+**Head over to the [Documentation](/DOCUMENTATION.md)** to see code examples and other language features!
 
 ctok *(pronounced 'sea-talk')* is an interpreter that internally uses a compiler, and a Bytecode Virtual Machine written
-in C for Tok.
+in C for Tok. The VM also includes a Mark-Sweep garbage collector for automated memory management.
 
 This is a much faster and sophisticated implementation compared to
 [jtok, the interpreter I wrote for Tok in Java](https://github.com/JyotinderSingh/jtok).
-
-Head over to the [Documentation](/DOCUMENTATION.md) to see code examples and other language features!
 
 ## Why on earth did I spend more than 3 months making this?
 
