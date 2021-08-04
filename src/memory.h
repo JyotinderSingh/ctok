@@ -40,6 +40,14 @@
 
 void* reallocate(void* pointer, size_t oldSize, size_t newSize);
 
+void markObject(Obj* object);
+
+void markValue(Value value);
+
 void freeObjects();
+
+// Pull yourself together,
+// you piece of trash
+void collectGarbage();
 
 #endif //CTOK_MEMORY_H

@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "compiler.h"
+#include "memory.h"
 #include "scanner.h"
 
 #ifdef DEBUG_PRINT_CODE
@@ -1397,4 +1398,17 @@ ObjFunction* compile(const char* source) {
     // We return the function object if the code compiled properly, otherwise we return NULL.
     // This makes sure the VM doesn't try to execute a function that may contain invalid bytecode.
     return parser.hadError ? NULL : function;
+}
+
+/**
+ * Collection can begin during any allocation. Those allocations don’t just happen while the user’s program is running.
+ * The compiler itself periodically grabs memory from the heap for literals and the constant table.
+ * If the GC runs while we’re in the middle of compiling, then any values the compiler directly accesses need to be treated as roots too.
+ */
+void markCompilerRoots() {
+    Compiler* compiler = current;
+    while (compiler != NULL) {
+        markObject((Obj*) compiler->function);
+        compiler = compiler->enclosing;
+    }
 }

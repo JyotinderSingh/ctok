@@ -6,6 +6,7 @@
 
 #include "chunk.h"
 #include "memory.h"
+#include "vm.h"
 
 /**
  * Function to initialize a chunk before use.
@@ -51,8 +52,11 @@ void writeChunk(Chunk* chunk, uint8_t byte, int line) {
 }
 
 int addConstant(Chunk* chunk, Value value) {
+    // pushing the value on the stack to make sure it doesn't get GC'd lol.
+    push(value);
     writeValueArray(&chunk->constants, value);
-
+    // Now that it is in the ValueArray and safe from GC's wrath, we can pop the value off of the VM's stack.
+    pop();
     // we return the index where the constant was appended so that it can be located later.
     return chunk->constants.count - 1;
 }

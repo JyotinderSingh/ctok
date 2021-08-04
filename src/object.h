@@ -46,7 +46,11 @@ typedef enum {
  * This struct acts sort of like a base class for the different kinds of objects that are supported in Tok.
  */
 struct Obj {
+    // Type of Object.
     ObjType type;
+    // field to denote if the Object still has a reference in the code. True if references are present, false otherwise.
+    bool isMarked;
+    // Pointer to the next object in the chain.
     struct Obj* next;
 };
 

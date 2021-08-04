@@ -27,9 +27,14 @@
 static Obj* allocateObject(size_t size, ObjType type) {
     Obj* object = (Obj*) reallocate(NULL, 0, size);
     object->type = type;
+    object->isMarked = false;
 
     object->next = vm.objects;
     vm.objects = object;
+
+#ifdef DEBUG_LOG_GC
+    printf("%p allocate %zu for %d", (void*) object, size, type);
+#endif
     return object;
 }
 
@@ -89,7 +94,14 @@ static ObjString* allocateString(char* chars, int length, uint32_t hash) {
     string->length = length;
     string->chars = chars;
     string->hash = hash;
+
+    // push the ObjString on the stack to keep it safe from the GC's while we add it to the intern table.
+    // This ensures the string is safe while the table is being resized.
+    push(OBJ_VAL(string));
     tableSet(&vm.strings, string, NIL_VAL);
+    // Now that the ObjString is in the table and reachable by the GC - we can pop it off the VM's stack.
+    pop();
+
     return string;
 }
 

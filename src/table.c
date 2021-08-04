@@ -208,3 +208,34 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
         index = (index + 1) % table->capacity;
     }
 }
+
+/**
+ * Utility function to free all the unmarked ObjStrings from the memory during GC.
+ * @param table
+ */
+void tableRemoveWhite(Table* table) {
+    // We walk every entry in the table.
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        // The string intern table uses only the key of each entry - it's basically a hash set, and not a hash map.
+        // If the key string object's mark bit is not set, then it is a white object that is moments away from being swept away.
+        // We delete it from the hash table first, and thus ensure we won't see any dangling pointers.
+        if (entry->key != NULL && !entry->key->obj.isMarked) {
+            tableDelete(table, entry->key);
+        }
+    }
+}
+
+/**
+ * Utility function for the GC to mark the globals presents in the table.
+ * @param table
+ */
+void markTable(Table* table) {
+    // Walk the entry array, and for each entry - mark its value.
+    for (int i = 0; i < table->capacity; i++) {
+        Entry* entry = &table->entries[i];
+        // mark the key string as well, since the GC manages those as well.
+        markObject((Obj*) entry->key);
+        markValue(entry->value);
+    }
+}

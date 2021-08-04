@@ -49,8 +49,18 @@ typedef struct {
     Table strings;
     /// <code>openUpvalues</code> is the list of open upvalues present in the VM at a particular instant of time.
     ObjUpvalue* openUpvalues;
+    /// Running total of the number of bytes of managed memory the VM has allocated.
+    size_t bytesAllocated;
+    //// Threshold number of bytes that triggers the next collection.
+    size_t nextGC;
     /// <code>objects</code> stores all the different kinds of runtime objects for the VM.
     Obj* objects;
+    /// Number of gray nodes present in the GC grayStack.
+    int grayCount;
+    /// Number of gray nodes that the GC grayStack can hold.
+    int grayCapacity;
+    /// Data structure to hold a pointers to Obj* that have been marked gray by the GC.
+    Obj** grayStack;
 } VM;
 
 /**

@@ -11,4 +11,6 @@
 
 ObjFunction* compile(const char* source);
 
+void markCompilerRoots();
+
 #endif //CTOK_COMPILER_H
