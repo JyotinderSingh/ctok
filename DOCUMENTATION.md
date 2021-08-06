@@ -2,6 +2,10 @@
 
 Go through this document to get familiar with how Tok code looks like, and what you can do with it.
 
+**Important Note**: ctok doesn't yet support Classes and related OOP concepts, but Tok does. I'm actively working on this
+project to get that working. If you'd like to check out a fully functional interpreter for Tok, please check out the one
+I wrote in Java, called [jtok](https://github.com/JyotinderSingh/jtok)!
+
 ## Hello, Tok
 
 ```
