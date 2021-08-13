@@ -1079,6 +1079,28 @@ static void function(FunctionType type) {
 }
 
 /**
+ * Parses a class declaration.
+ */
+static void classDeclaration() {
+    consume(TOKEN_IDENTIFIER, "Expect class name.");
+    // We take the identifier (class name) and add it to the surrounding function's constant table as a string.
+    // Compiler needs to stuff the name somewhere the runtime can find it, the constant table is the way to do that.
+    uint8_t nameConstant = identifierConstant(&parser.previous);
+    // The class's name is also used to bind the class object to a variable of the same name. So we declare a variable
+    // of the same name. So we declare a variable with that identifier right after consuming its token.
+    declareVariable();
+    // emit an instruction to create the class object at runtime. The instruction takes the constant table index of the
+    // class's name as an operand.
+    emitBytes(OP_CLASS, nameConstant);
+    // we define the variable before we parse the body. That way users can refer to the containing class inside the bodies
+    // of its own methods. That's useful for factory methods that the user may want to define.
+    defineVariable(nameConstant);
+
+    consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+}
+
+/**
  * Parses function declaration.
  * Functions are first-class values, and a function declaration simply creates adn stores one ina  newly declared variable.
  * So we parse the name just like any other variable declaration. A function declaration at the top level will bind the
@@ -1338,7 +1360,9 @@ static void synchronize() {
  * Parses a declaration.
  */
 static void declaration() {
-    if (match(TOKEN_FUN)) {
+    if (match(TOKEN_CLASS)) {
+        classDeclaration();
+    } else if (match(TOKEN_FUN)) {
         funDeclaration();
     } else if (match(TOKEN_VAR)) {
         varDeclaration();

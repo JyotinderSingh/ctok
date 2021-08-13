@@ -90,3 +90,9 @@ fun outer() {
 
 var closure = outer();
 closure();
+
+// Classes
+
+class NewClass {}
+
+print NewClass;

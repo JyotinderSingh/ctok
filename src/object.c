@@ -39,6 +39,17 @@ static Obj* allocateObject(size_t size, ObjType type) {
 }
 
 /**
+ * Utility function to create a new ObjClass.
+ * @param name name of the class to be created.
+ * @return
+ */
+ObjClass* newClass(ObjString* name) {
+    ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+    klass->name = name;
+    return klass;
+}
+
+/**
  * Utility function to create a new ObjClosure instance.
  * @param function
  * @return
@@ -190,6 +201,10 @@ static void printFunction(ObjFunction* function) {
  */
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_CLASS:
+            // A class simply says its own name.
+            printf("%s", AS_CLASS(value)->name->chars);
+            break;
         case OBJ_CLOSURE:
             printFunction(AS_CLOSURE(value)->function);
             break;

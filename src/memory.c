@@ -113,6 +113,12 @@ static void blackenObject(Obj* object) {
 #endif
     // Each object has different kinds of fields that might reference other objects
     switch (object->type) {
+        case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*) object;
+            // mark the class's name to keep the string alive.
+            markObject((Obj*) klass->name);
+            break;
+        }
         case OBJ_CLOSURE: {
             ObjClosure* closure = (ObjClosure*) object;
             // Each closure has a reference to the bare function it wraps
@@ -155,6 +161,10 @@ static void freeObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_CLASS: {
+            FREE(ObjClass, object);
+            break;
+        }
         case OBJ_CLOSURE: {
             ObjClosure* closure = (ObjClosure*) object;
             FREE_ARRAY(ObjUpvalue*, closure->upvalues, closure->upvalueCount);

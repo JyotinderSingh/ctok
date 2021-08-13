@@ -22,12 +22,12 @@
  * Optional "stress test" mode for the garbage collector.
  * When this flag is defined, the GC runs as often as it possibly can.
  */
-//#define DEBUG_STRESS_GC
+#define DEBUG_STRESS_GC
 
 /**
  * When enabled, ctok prints information to the console when it does something with dynamic memory.
  */
-//#define DEBUG_LOG_GC
+#define DEBUG_LOG_GC
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 

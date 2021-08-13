@@ -607,6 +607,14 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_CLASS:
+                // Load the string for the class's name from the constant table and pass that to newClass().
+                // This creates a new class object with the given name. We then push this onto the stack.
+                // If the class is bound to a global variable, then the compiler's call to defineVariable() will emit
+                // code tos tore that object from the stack into the global variable table. Otherwise, it's right where
+                // it needs to be on the stack for a new local variable.
+                push(OBJ_VAL(newClass(READ_STRING())));
+                break;
         }
     }
 #undef READ_BYTE
