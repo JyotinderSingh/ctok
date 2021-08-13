@@ -519,6 +519,28 @@ static void literal(bool canAssign) {
 }
 
 /**
+ * Method to handle getter and setter operations on a class instance.
+ * @param canAssign
+ */
+static void dot(bool canAssign) {
+    // The parser expects to find a property name immediately after the dot.
+    consume(TOKEN_IDENTIFIER, "Expect property name after '.'.");
+    // We load that token's lexeme into the constant table as a string so that the name is available at runtime.
+    uint8_t name = identifierConstant(&parser.previous);
+
+    // if we see an equals sign after the field name, it must be a set expression that is assigning to a field.
+    // The canAssign makes sure we don't allow illegal assignments like:
+    // a + b.c = 3
+    // if we didn't catch this, it would be interpreted as a + (b.c = 3)
+    if (canAssign && match(TOKEN_EQUAL)) {
+        expression();
+        emitBytes(OP_SET_PROPERTY, name);
+    } else {
+        emitBytes(OP_GET_PROPERTY, name);
+    }
+}
+
+/**
  * Function to compile grouping expressions.
  * Assumes TOKEN_LEFT_PAREN has already been consumed.
  */
@@ -656,7 +678,7 @@ ParseRule rules[] = {
         [TOKEN_LEFT_BRACE]    = {NULL, NULL, PREC_NONE},
         [TOKEN_RIGHT_BRACE]   = {NULL, NULL, PREC_NONE},
         [TOKEN_COMMA]         = {NULL, NULL, PREC_NONE},
-        [TOKEN_DOT]           = {NULL, NULL, PREC_NONE},
+        [TOKEN_DOT]           = {NULL, dot, PREC_CALL},
         [TOKEN_MINUS]         = {unary, binary, PREC_TERM},
         [TOKEN_PLUS]          = {NULL, binary, PREC_TERM},
         [TOKEN_SEMICOLON]     = {NULL, NULL, PREC_NONE},

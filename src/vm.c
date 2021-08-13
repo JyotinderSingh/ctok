@@ -449,6 +449,51 @@ static InterpretResult run() {
                 *frame->closure->upvalues[slot]->location = peek(0);
                 break;
             }
+            case OP_GET_PROPERTY: {
+                // When the interpreter reaches this instruction, the expression to the left of the dot has already been
+                // executed and the resulting instance is on top of the stack.
+                if (!IS_INSTANCE(peek(0))) {
+                    // In Tok only instances are allowed to have fields, you can't stuff a field on a string or a number.
+                    // So we check for that before trying to access any fields on it.
+                    runtimeError("Only instances have properties.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                ObjInstance* instance = AS_INSTANCE(peek(0));
+                // We read the field name from the constant pool
+                ObjString* name = READ_STRING();
+
+                // and look it up in the instance's field table.
+                Value value;
+                if (tableGet(&instance->fields, name, &value)) {
+                    // If the hash table contains an entry with that name, we pop the instance and push hte entry's value as the result
+                    pop();
+                    push(value);
+                    break;
+                }
+                // If the field doesn't exist, we've defined that to be a runtime error in Tok. So we check for that and abort
+                runtimeError("Undefined property '%s'.", name->chars);
+                return INTERPRET_RUNTIME_ERROR;
+            }
+            case OP_SET_PROPERTY: {
+                // make sure we're trying to set a property on an instance and nothing else
+                if (!IS_INSTANCE(peek(1))) {
+                    runtimeError("Only instances have fields.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                // When this executes, the top of the stack has the instance whose field is being set, and above that,
+                // the value to be stored.
+                ObjInstance* instance = AS_INSTANCE(peek(1));
+                // We first read the instruction's operand and find the field name string.
+                tableSet(&instance->fields, READ_STRING(), peek(0));
+                // we get the value to be stored off the stack.
+                Value value = pop();
+                // we pop the instance itself off
+                pop();
+                // finally, push the value back on the stack.
+                push(value);
+                break;
+            }
             case OP_EQUAL: {
                 // get the two operands
                 Value b = pop();
