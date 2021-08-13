@@ -95,4 +95,4 @@ closure();
 
 class NewClass {}
 
-print NewClass;
+print NewClass();

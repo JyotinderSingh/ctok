@@ -138,6 +138,14 @@ static void blackenObject(Obj* object) {
             markArray(&function->chunk.constants);
             break;
         }
+        case OBJ_INSTANCE: {
+            ObjInstance *instance = (ObjInstance*)object;
+            // if the instance is alive, we need to keep its class around.
+            markObject((Obj*)instance->klass);
+            // we need to keep every object referenced by the instance's fields around as well.
+            markTable(&instance->fields);
+            break;
+        }
         case OBJ_UPVALUE:
             // When an upvalue is closed, it contains a reference to the closed-over value.
             // Since the value is no longer on the stack, we need to trace the reference to it from the upvalue.
@@ -177,6 +185,15 @@ static void freeObject(Obj* object) {
             freeChunk(&function->chunk);
             // Free the function object itself.
             FREE(ObjFunction, object);
+            break;
+        }
+        case OBJ_INSTANCE: {
+            ObjInstance* instance = (ObjInstance*) object;
+            // The instance owns its field table, so we free the table when freeing the instance.
+            // We don't explicity free the entries in the table, because there may be other references to those objects.
+            // The GC will take care of those for us. Here we only free the entry array of the table itself.
+            freeTable(&instance->fields);
+            FREE(ObjInstance, object);
             break;
         }
         case OBJ_NATIVE:

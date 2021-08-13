@@ -83,6 +83,18 @@ ObjFunction* newFunction() {
 }
 
 /**
+ * Utility function to create a new instance of a Tok class.
+ * @param klass pointer to the CTok class whose instance is to be created
+ * @return
+ */
+ObjInstance* newInstance(ObjClass* klass) {
+    ObjInstance* instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
+    instance->klass = klass;
+    initTable(&instance->fields);
+    return instance;
+}
+
+/**
  * Utility function to create a new Native Function.
  * Takes a C function pointer to wrap in an ObjNative. It sets up the object header and stores the function.
  * @param function pointer to the native C function.
@@ -210,6 +222,9 @@ void printObject(Value value) {
             break;
         case OBJ_FUNCTION:
             printFunction(AS_FUNCTION(value));
+            break;
+        case OBJ_INSTANCE:
+            printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
             break;
         case OBJ_NATIVE:
             printf("<native fn>");
