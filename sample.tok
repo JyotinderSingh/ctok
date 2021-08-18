@@ -93,9 +93,11 @@ closure();
 
 // Classes
 
-class Pair {}
+class Scone {
+  topping(first, second) {
+    print "scone with " + first + " and " + second;
+  }
+}
 
-var pair = Pair();
-pair.first = 1;
-pair.second = 2;
-print pair.first + pair.second; // 3.;
+var scone = Scone();
+scone.topping("berries", "cream");

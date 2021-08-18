@@ -39,6 +39,19 @@ static Obj* allocateObject(size_t size, ObjType type) {
 }
 
 /**
+ * Utility function to create a new <code>ObjBoundMethod</code>.
+ * @param receiver instance to which the method closure is to be bound
+ * @param method method closure which needs to be bound.
+ * @return Pointer to an ObjMethod containing the method closure bound to the provided receiver.
+ */
+ObjBoundMethod* newBoundMethod(Value receiver, ObjClosure* method) {
+    ObjBoundMethod* bound = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
+    bound->receiver = receiver;
+    bound->method = method;
+    return bound;
+}
+
+/**
  * Utility function to create a new ObjClass.
  * @param name name of the class to be created.
  * @return
@@ -46,6 +59,7 @@ static Obj* allocateObject(size_t size, ObjType type) {
 ObjClass* newClass(ObjString* name) {
     ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
     klass->name = name;
+    initTable(&klass->methods);
     return klass;
 }
 
@@ -213,6 +227,9 @@ static void printFunction(ObjFunction* function) {
  */
 void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
+        case OBJ_BOUND_METHOD:
+            printFunction(AS_BOUND_METHOD(value)->method->function);
+            break;
         case OBJ_CLASS:
             // A class simply says its own name.
             printf("%s", AS_CLASS(value)->name->chars);

@@ -20,6 +20,7 @@
 /**
  * Macros that help us make sure if it's safe to case a value into a specific object type.
  */
+#define IS_BOUND_METHOD(value) isObjType(value, OBJ_BOUND_METHOD)
 #define IS_CLASS(value)     isObjType(value, OBJ_CLASS)
 #define IS_CLOSURE(value)   isObjType(value, OBJ_CLOSURE)
 #define IS_FUNCTION(value)  isObjType(value, OBJ_FUNCTION)
@@ -30,6 +31,7 @@
 /**
  * Macros to cast an Obj value into a specific Object type.
  */
+#define AS_BOUND_METHOD(value) ((ObjBoundMethod*)AS_OBJ(value))
 #define AS_CLASS(value)        ((ObjClass*)AS_OBJ(value))
 #define AS_CLOSURE(value)      ((ObjClosure*)AS_OBJ(value))
 #define AS_FUNCTION(value)  ((ObjFunction*)AS_OBJ(value))
@@ -41,6 +43,7 @@
  * Enums that define all the different kinds of objects supported by Tok.
  */
 typedef enum {
+    OBJ_BOUND_METHOD,
     OBJ_CLASS,
     OBJ_CLOSURE,
     OBJ_FUNCTION,
@@ -145,8 +148,10 @@ typedef struct {
  */
 typedef struct {
     Obj obj;
-    // Name of the class
+    // Name of the class.
     ObjString* name;
+    // Hash table of methods on the object. Keys are the method names, and each value is an ObjClosure for the body of the method.
+    Table methods;
 } ObjClass;
 
 /**
@@ -159,6 +164,19 @@ typedef struct {
     // Hash table to store the fields on an instance.
     Table fields;
 } ObjInstance;
+
+/**
+ * Runtime type to wrap a receiver (class instance) and a method closure together.
+ */
+typedef struct {
+    Obj obj;
+    // ObjInstance on which the method is called. (We just defined this as Value and not ObjInstance so that we don't need to convert it again and again)
+    Value receiver;
+    // pointer to the ObjClosure of the method being called on the instance.
+    ObjClosure* method;
+} ObjBoundMethod;
+
+ObjBoundMethod* newBoundMethod(Value receiver, ObjClosure* method);
 
 ObjClass* newClass(ObjString* name);
 

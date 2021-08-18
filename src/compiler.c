@@ -594,9 +594,9 @@ static void string(bool canAssign) {
 }
 
 /**
- * Emits the bytecode to read a global variable with a specific name.
- * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_GLOBAL in the bytecode.
- * @param name
+ * Emits the bytecode to read a variable with a specific name.
+ * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_* in the bytecode.
+ * @param name Token for the variable to be read.
  */
 static void namedVariable(Token name, bool canAssign) {
     // We set the appropriate bytecode for local/global variables depending on the operation being performed.
@@ -1101,10 +1101,31 @@ static void function(FunctionType type) {
 }
 
 /**
+ * Parses a method declaration inside a class.
+ */
+static void method() {
+    // consume the name of the method.
+    consume(TOKEN_IDENTIFIER, "Expect method name.");
+    // Add the method name token's lexeme to the constant table, getting back a table index.
+    uint8_t constant = identifierConstant(&parser.previous);
+
+    // parse the method parameters and body.
+    // The function compiles the subsequent parameter list and function body. Then it emits the code to create an ObjClosure
+    // and leaves it on top of the stack. At runtime, the VM will find the closure there.
+    FunctionType type = TYPE_FUNCTION;
+    function(type);
+
+    // emit bytecode to add the method to the class's method table, with the constant table index as the operand.
+    emitBytes(OP_METHOD, constant);
+}
+
+/**
  * Parses a class declaration.
  */
 static void classDeclaration() {
     consume(TOKEN_IDENTIFIER, "Expect class name.");
+    // capture the name of the class.
+    Token className = parser.previous;
     // We take the identifier (class name) and add it to the surrounding function's constant table as a string.
     // Compiler needs to stuff the name somewhere the runtime can find it, the constant table is the way to do that.
     uint8_t nameConstant = identifierConstant(&parser.previous);
@@ -1118,8 +1139,22 @@ static void classDeclaration() {
     // of its own methods. That's useful for factory methods that the user may want to define.
     defineVariable(nameConstant);
 
+    // Right before compiling the class body, we call namedVariable(). It generates code to load a variable with the given
+    // name onto the stack.
+    namedVariable(className, false);
+
     consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
+
+    // compile the methods.
+    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        // Tok doesn't have field declarations, so anything before the closing brace at the end of the class body must be a method.
+        method();
+    }
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
+
+    // When we execute each OP_METHOD instruction, the stack has the method's closure on top with the class right under
+    // it. Once we've reached the end of the methods, we no longer need the class and tell the VM to pop it off the stack.
+    emitByte(OP_POP);
 }
 
 /**

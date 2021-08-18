@@ -113,10 +113,20 @@ static void blackenObject(Obj* object) {
 #endif
     // Each object has different kinds of fields that might reference other objects
     switch (object->type) {
+        case OBJ_BOUND_METHOD: {
+            ObjBoundMethod* bound = (ObjBoundMethod*) object;
+            /// mark the receiving instance, so that <code>this</code> can still find the object when the handler is invoked later.
+            markValue(bound->receiver);
+            // mark the method being bound to the receiver.
+            markObject((Obj*) bound->method);
+            break;
+        }
         case OBJ_CLASS: {
             ObjClass* klass = (ObjClass*) object;
             // mark the class's name to keep the string alive.
             markObject((Obj*) klass->name);
+            // mark all the methods present on the class.
+            markTable(&klass->methods);
             break;
         }
         case OBJ_CLOSURE: {
@@ -139,9 +149,9 @@ static void blackenObject(Obj* object) {
             break;
         }
         case OBJ_INSTANCE: {
-            ObjInstance *instance = (ObjInstance*)object;
+            ObjInstance* instance = (ObjInstance*) object;
             // if the instance is alive, we need to keep its class around.
-            markObject((Obj*)instance->klass);
+            markObject((Obj*) instance->klass);
             // we need to keep every object referenced by the instance's fields around as well.
             markTable(&instance->fields);
             break;
@@ -169,7 +179,14 @@ static void freeObject(Obj* object) {
 #endif
 
     switch (object->type) {
+        case OBJ_BOUND_METHOD:
+            // Note: While the bound method contains a couple of references, it doesn't own them - so it frees nothing but itself.
+            FREE(ObjBoundMethod, object);
+            break;
         case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*) object;
+            // The ObjClass struct owns the memory for the methods hash table.
+            freeTable(&klass->methods);
             FREE(ObjClass, object);
             break;
         }

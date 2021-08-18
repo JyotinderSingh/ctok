@@ -178,6 +178,11 @@ static bool call(ObjClosure* closure, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
+            case OBJ_BOUND_METHOD: {
+                ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                // pull out the raw closure from the ObjBoundMethod invoke the call.
+                return call(bound->method, argCount);
+            }
             case OBJ_CLASS: {
                 // if the value being called is a class, we treat it as constructor call.
                 ObjClass* klass = AS_CLASS(callee);
@@ -202,6 +207,30 @@ static bool callValue(Value callee, int argCount) {
     }
     runtimeError("Can only call functions and classes.");
     return false;
+}
+
+/**
+ * Binds a method call to an instance.\n
+ * Takes a class of an instance and a name of a method, and places the corresponding the ObjBoundMethod object on top of the stack.
+ * @param class name of the class.
+ * @param name name of the method to be looked up.
+ * @return true if method was found, otherwise, false.
+ */
+static bool bindMethod(ObjClass* klass, ObjString* name) {
+    Value method;
+    // look for the given method in the class's method table. If we don't find one, we report a runtime error and bail out.
+    if (!tableGet(&klass->methods, name, &method)) {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    // if we find the method, we wrap it in a new ObjBoundMethod (binding it to the instance on top of the stack).
+    ObjBoundMethod* bound = newBoundMethod(peek(0), AS_CLOSURE(method));
+    // pop the receiver/instance from the stack.
+    pop();
+    // push the bound method on top of the stack
+    push(OBJ_VAL(bound));
+    return true;
 }
 
 /**
@@ -264,6 +293,21 @@ static void closeUpvalues(Value* last) {
         upvalue->location = &upvalue->closed;
         vm.openUpvalues = upvalue->next;
     }
+}
+
+/**
+ * Adds a method closure present at the top of the stack to the <code>methods</code> hash table of a given object.
+ * @param name
+ */
+static void defineMethod(ObjString* name) {
+    // read the method closure present on the top of the stack.
+    Value method = peek(0);
+    // read the class object present below it
+    ObjClass* klass = AS_CLASS(peek(1));
+    // add the method to the hash table of the class object.
+    tableSet(&klass->methods, name, method);
+    // pop the closure from the stack since we're done with it.
+    pop();
 }
 
 /**
@@ -465,14 +509,20 @@ static InterpretResult run() {
                 // and look it up in the instance's field table.
                 Value value;
                 if (tableGet(&instance->fields, name, &value)) {
-                    // If the hash table contains an entry with that name, we pop the instance and push hte entry's value as the result
+                    // If the hash table contains an entry with that name, we pop the instance and push the entry's value as the result
                     pop();
                     push(value);
                     break;
                 }
-                // If the field doesn't exist, we've defined that to be a runtime error in Tok. So we check for that and abort
-                runtimeError("Undefined property '%s'.", name->chars);
-                return INTERPRET_RUNTIME_ERROR;
+
+                // fields take priority over and shadow methods, hence method is checked here after field lookup.
+                // if the instance does not have a field with the given property name, then the name may refer to a method.
+                // we take the instance's class and pass it to bindMethod(). If bindMethod finds a method, it places the
+                // method on the stack and returns true, otherwise, returns false.
+                if (!bindMethod(instance->klass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
             }
             case OP_SET_PROPERTY: {
                 // make sure we're trying to set a property on an instance and nothing else
@@ -666,6 +716,9 @@ static InterpretResult run() {
                 // code tos tore that object from the stack into the global variable table. Otherwise, it's right where
                 // it needs to be on the stack for a new local variable.
                 push(OBJ_VAL(newClass(READ_STRING())));
+                break;
+            case OP_METHOD:
+                defineMethod(READ_STRING());
                 break;
         }
     }

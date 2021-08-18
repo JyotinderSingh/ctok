@@ -40,7 +40,8 @@ typedef enum {
     OP_EQUAL,
     OP_GREATER,
     OP_LESS,
-    OP_ADD
+    OP_ADD,
+    OP_METHOD
 } OpCode;
 
 typedef struct {
