@@ -176,10 +176,10 @@ static bool call(ObjClosure* closure, int argCount) {
 }
 
 /**
- * Method to handle Tok Function calls.
+ * Handles a call invocation on a Value. Method to handle Tok Function calls.\n
  * Handles error cases.
- * @param callee
- * @param argCount
+ * @param callee object on which the call is being invoked.
+ * @param argCount number of arguments passed to the call.
  * @return
  */
 static bool callValue(Value callee, int argCount) {
@@ -233,6 +233,56 @@ static bool callValue(Value callee, int argCount) {
     }
     runtimeError("Can only call functions and classes.");
     return false;
+}
+
+/**
+ * Invokes a given method on a given class.
+ * @param klass The Tok class on which the method needs to be invoked.
+ * @param name name of the method being invoked.
+ * @param argCount number of arguments provided to the method.
+ * @return true if method call succeeds, false otherwise.
+ */
+static bool invokeFromClass(ObjClass* klass, ObjString* name, int argCount) {
+    Value method;
+    // find the method in the class's method table.
+    if (!tableGet(&klass->methods, name, &method)) {
+        // throw an error if the method is not present.
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+    // push a call to the method's closure onto the CallFrame stack.
+    return call(AS_CLOSURE(method), argCount);
+}
+
+/**
+ * Handles an OP_INVOKE call for an optimized method call flow.
+ * @param name name of the method being called.
+ * @param argCount number of arguments passed to the method.
+ * @return true if invocation succeeded, false otherwise.
+ */
+static bool invoke(ObjString* name, int argCount) {
+    // grab the receiver off the stack.
+    Value receiver = peek(argCount);
+    // cast receiver Value as instance.
+    if (!IS_INSTANCE(receiver)) {
+        // report error and bail out.
+        runtimeError("Only instances have methods.");
+        return false;
+    }
+
+    ObjInstance* instance = AS_INSTANCE(receiver);
+
+    // first we look up a field with the given name
+    Value value;
+    if (tableGet(&instance->fields, name, &value)) {
+        // if found, we store it on the stack in the place of the receiver, under the argument list. (The way OP_GET_PROPERTY
+        // behaves, since the latter instruction executes before a subsequent paranthesized list of arguments has been evaluated).
+        vm.stackTop[-argCount - 1] = value;
+        // try to call the field's value like the callable that it hopefully is.
+        return callValue(value, argCount);
+    }
+
+    return invokeFromClass(instance->klass, name, argCount);
 }
 
 /**
@@ -667,6 +717,19 @@ static InterpretResult run() {
                  * execute the next instruction, it will read the <code>ip</code> from the newly called function's
                  * CallFrame and jump to its code.
                  */
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
+            case OP_INVOKE: {
+                // name of the method being called.
+                ObjString* method = READ_STRING();
+                // number of arguments being passed to the method.
+                int argCount = READ_BYTE();
+                if (!invoke(method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // if method invocation succeeded, then there is a new CallFrame on the stack, so we refresh our cached
+                // copy of the current frame in frame.
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }

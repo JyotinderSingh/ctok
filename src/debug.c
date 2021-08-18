@@ -42,6 +42,24 @@ static int constantInstruction(const char* name, Chunk* chunk, int offset) {
 }
 
 /**
+ * Function to disassemble an OP_INVOKE instruction.
+ * @param name name of the method being called.
+ * @param chunk chunk being disassembled.
+ * @param offset offset of the instruction in the chunk's code array.
+ * @return
+ */
+static int invokeInstruction(const char* name, Chunk* chunk, int offset) {
+    // read the two operands.
+    uint8_t constant = chunk->code[offset + 1];
+    uint8_t argCount = chunk->code[offset + 2];
+    // print the name of the method being called, and the operands to the instruction.
+    printf("%-16s (%d args) %4d '", name, argCount, constant);
+    printValue(chunk->constants.values[constant]);
+    printf("'\n");
+    return offset + 3;
+}
+
+/**
  * Function to output debug information for simple instructions - just the name of the instruction.
  * @param name name of the instruction
  * @param offset offset of the instruction in the chunk's code array.
@@ -153,6 +171,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
             return jumpInstruction("OP_LOOP", -1, chunk, offset);
         case OP_CALL:
             return byteInstruction("OP_CALL", chunk, offset);
+        case OP_INVOKE:
+            return invokeInstruction("OP_INVOKE", chunk, offset);
         case OP_CLOSURE: {
             // increase the offset to read the operand
             offset++;

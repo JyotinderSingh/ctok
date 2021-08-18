@@ -564,6 +564,17 @@ static void dot(bool canAssign) {
     if (canAssign && match(TOKEN_EQUAL)) {
         expression();
         emitBytes(OP_SET_PROPERTY, name);
+    } else if (match(TOKEN_LEFT_PAREN)) {
+        // optimized flow for method calls, occurs when method access and invocation are performed together (most common case).
+        // after the compiler has parsed the property name, we look for a left parenthesis. If we match one, we switch to
+        // this new code path. Here, we compile the argument list exactly like we do when compiling a call expression.
+        uint8_t argCount = argumentList();
+        // emit OP_INVOKE, it takes two operands:
+        // - index of the property name in the constant table.
+        // - the number of arguments passed to the method.
+        // basically, it combines the operands of the OP_GET_PROPERTY and OP_CALL instructions that it replaces, in that order.
+        emitBytes(OP_INVOKE, name);
+        emitByte(argCount);
     } else {
         emitBytes(OP_GET_PROPERTY, name);
     }
