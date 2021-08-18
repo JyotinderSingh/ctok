@@ -97,7 +97,14 @@ class Scone {
   topping(first, second) {
     print "scone with " + first + " and " + second;
   }
+
+  printPrice() {
+    // needs price field to be instantiated on the object.
+    print this.price;
+  }
 }
 
 var scone = Scone();
+scone.price = 2.99;
 scone.topping("berries", "cream");
+scone.printPrice();

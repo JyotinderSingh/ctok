@@ -180,6 +180,11 @@ static bool callValue(Value callee, int argCount) {
         switch (OBJ_TYPE(callee)) {
             case OBJ_BOUND_METHOD: {
                 ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                // Place the receiver at stack slot zero for the method to access in case of "this" invocation.
+                // When a method is called, the top of the stack contains all the arguments,
+                // and then just under this is the closure of the called method. That's where slot zero in the new CallFrame will be.
+                // The -argCount skips past the arguments and the - 1 adjusts for the fact that stackTop points just past the last used stack slot.
+                vm.stackTop[-argCount - 1] = bound->receiver;
                 // pull out the raw closure from the ObjBoundMethod invoke the call.
                 return call(bound->method, argCount);
             }

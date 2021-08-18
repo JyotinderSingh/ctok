@@ -79,6 +79,7 @@ typedef struct {
  */
 typedef enum {
     TYPE_FUNCTION,
+    TYPE_METHOD,
     TYPE_SCRIPT
 } FunctionType;
 
@@ -103,14 +104,24 @@ typedef struct Compiler {
     Local locals[UINT8_COUNT];
     // tracks how many locals are in scope i.e. how many array slots are in use.
     int localCount;
-    // Maintans upvalue references for closures.
+    // Maintains upvalue references for closures.
     Upvalue upvalues[UINT8_COUNT];
     // scopeDepth tracks the number of blocks surrounding the current bit of code being compiled.
     int scopeDepth;
 } Compiler;
 
+/**
+ * struct representing the current, innermost class being compiled.
+ */
+typedef struct ClassCompiler {
+    // link to the enclosing class.
+    struct ClassCompiler* enclosing;
+} ClassCompiler;
+
 Parser parser;
 Compiler* current = NULL;
+// variable pointing to a struct representing the current, innermost class being compiled.
+ClassCompiler* currentClass = NULL;
 Chunk* compilingChunk;
 
 /**
@@ -363,8 +374,20 @@ static void initCompiler(Compiler* compiler, FunctionType type) {
     Local* local = &current->locals[current->localCount++];
     local->depth = 0;
     local->isCaptured = false;
-    local->name.start = "";
-    local->name.length = 0;
+
+    /**
+     * Tok stores every variable on the VM's stack. The compiler keeps track of which slots in the function’s stack
+     * window are owned by which local variables. For function calls, slot zero ends up holding the function being called.
+     * Since the slot has no name, the function body never accesses it. For method calls, we can repurpose that slot to
+     * store the receiver. Slot zero will store the instance that <code>this</code> is bound to.
+     */
+    if (type != TYPE_FUNCTION) {
+        local->name.start = "this";
+        local->name.length = 4;
+    } else {
+        local->name.start = "";
+        local->name.length = 0;
+    }
 }
 
 /**
@@ -640,6 +663,29 @@ static void variable(bool canAssign) {
 }
 
 /**
+ * Function to parse the <code>this</code> key-word. We treat <code>this</code> as a lexically scoped local variable whose
+ * value gets magically initialized. Compiling it like a local variable means we get a lot of the behaviour for free.
+ * In particular, closures inside a method that reference <code>this</code> will do the right thing and capture the receiver
+ * in an upvalue.\n
+ * When the parser function is called, the <code>this</code> has just been consumed and is stored as the <code>previous</code> token.
+ * We call the existing <code>variable()</code> function which compiles identifier expressions as variable accesses. It
+ * takes a single boolean parameter for whether the compiler should look for a following <code>=</code> operator and parse a setter.
+ * Assignment to <code>this</code> is not allowed, so we pass false to disallow that.\n
+ * The <code>variable</code> doesn't care that <code>this</code> is a reserved token. It treats the lexeme "this" as if
+ * it were a variable name and then looks it up using the existing scope resolution machinery.\n
+ * Note: the receiver instance is present at slot zero of the CallFrame.
+ * @param canAssign
+ */
+static void this_(bool canAssign) {
+    // Error to use 'this' outside a class/method.
+    if (currentClass == NULL) {
+        error("Can't use 'this' outside of a class.");
+        return;
+    }
+    variable(false);
+}
+
+/**
  * Function to compile unary operations
  */
 static void unary(bool canAssign) {
@@ -707,7 +753,7 @@ ParseRule rules[] = {
         [TOKEN_PRINT]         = {NULL, NULL, PREC_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PREC_NONE},
         [TOKEN_SUPER]         = {NULL, NULL, PREC_NONE},
-        [TOKEN_THIS]          = {NULL, NULL, PREC_NONE},
+        [TOKEN_THIS]          = {this_, NULL, PREC_NONE},
         [TOKEN_TRUE]          = {literal, NULL, PREC_NONE},
         [TOKEN_VAR]           = {NULL, NULL, PREC_NONE},
         [TOKEN_WHILE]         = {NULL, NULL, PREC_NONE},
@@ -1112,7 +1158,7 @@ static void method() {
     // parse the method parameters and body.
     // The function compiles the subsequent parameter list and function body. Then it emits the code to create an ObjClosure
     // and leaves it on top of the stack. At runtime, the VM will find the closure there.
-    FunctionType type = TYPE_FUNCTION;
+    FunctionType type = TYPE_METHOD;
     function(type);
 
     // emit bytecode to add the method to the class's method table, with the constant table index as the operand.
@@ -1139,6 +1185,13 @@ static void classDeclaration() {
     // of its own methods. That's useful for factory methods that the user may want to define.
     defineVariable(nameConstant);
 
+    // We maintain the memory of the ClassCompiler right on the C stack.
+    // If we aren't inside any class declaration at all, the module variable currentClass is NULL.
+    // When the compiler begins compiling a class, it pushes a new class compiler onto that implicit linked stack.
+    ClassCompiler classCompiler;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+
     // Right before compiling the class body, we call namedVariable(). It generates code to load a variable with the given
     // name onto the stack.
     namedVariable(className, false);
@@ -1155,6 +1208,9 @@ static void classDeclaration() {
     // When we execute each OP_METHOD instruction, the stack has the method's closure on top with the class right under
     // it. Once we've reached the end of the methods, we no longer need the class and tell the VM to pop it off the stack.
     emitByte(OP_POP);
+
+    // at the end of the class body, we pop the class compiler off the stack and restore the enclosing one.
+    currentClass = currentClass->enclosing;
 }
 
 /**

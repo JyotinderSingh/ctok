@@ -70,7 +70,7 @@ ObjClass* newClass(ObjString* name) {
  */
 ObjClosure* newClosure(ObjFunction* function) {
     ObjUpvalue** upvalues = ALLOCATE(ObjUpvalue*, function->upvalueCount);
-    // We initialize each piece of allocated memory to make sure the GC won't see any unintialized piece of memory.
+    // We initialize each piece of allocated memory to make sure the GC won't see any uninitialized piece of memory.
     for (int i = 0; i < function->upvalueCount; i++) {
         upvalues[i] = NULL;
     }
