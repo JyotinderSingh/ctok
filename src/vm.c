@@ -106,6 +106,12 @@ void initVM() {
     initTable(&vm.globals);
     initTable(&vm.strings);
 
+    // initialize the initString with the reserved keyword for defining initializer functions.
+    // Since during the copyString operation, we could trigger a GC. If the collector ran at just
+    // the wrong time, it would read vm.initString before it had been initialized. So, first we zero the field out.
+    vm.initString = NULL;
+    vm.initString = copyString("init", 4);
+
     // initialize native functions.
     defineNative("clock", clockNative);
 }
@@ -113,6 +119,7 @@ void initVM() {
 void freeVM() {
     freeTable(&vm.globals);
     freeTable(&vm.strings);
+    vm.initString = NULL;
     freeObjects();
 }
 
@@ -191,8 +198,22 @@ static bool callValue(Value callee, int argCount) {
             case OBJ_CLASS: {
                 // if the value being called is a class, we treat it as constructor call.
                 ObjClass* klass = AS_CLASS(callee);
-                // we create a new instance of the called class and store the result on the stack.
+                // we create a new instance of the called class and store the result on the stack, at stack slot zero.
                 vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(klass));
+
+                // automatically calling init() on new instances.
+                // After ht runtime allocates the new instance, we look for an init() method on the class.
+                Value initializer;
+                if (tableGet(&klass->methods, vm.initString, &initializer)) {
+                    // if we find the init() method, we initiate a call to it. This pushes a new CallFrame for the initializer's closure.
+                    return call(AS_CLOSURE(initializer), argCount);
+                } else if (argCount != 0) {
+                    // Tok doesn't require a class to define an initializer. If omitted, the runtime simply returns the
+                    // new uninitialized instance. However, if there is no init() method, then it doesn't make any sense to
+                    // pass arguments to the class when creating an instance. We raise an error in that case.
+                    runtimeError("Expected 0 arguments but got %d.", argCount);
+                    return false;
+                }
                 return true;
             }
             case OBJ_CLOSURE:

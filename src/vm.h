@@ -41,12 +41,14 @@ typedef struct {
     int frameCount;
     /// <code>stack</code> contains all the runtime values for the VM.
     Value stack[STACK_MAX];
-    /// <code>stackTop</code> stores the height of the Value stack.
+    /// <code>stackTop</code> stores the pointer to the top of the Value stack.
     Value* stackTop;
     /// <code>globals</code> is a hash table storing all the global variables.
     Table globals;
     /// <code>strings</code> is a hashtable containing pointers to all the string objects in the VM, and supports string interning.
     Table strings;
+    /// keyword used for init methods on classes, defined here for performance gains incurred by string interning.
+    ObjString* initString;
     /// <code>openUpvalues</code> is the list of open upvalues present in the VM at a particular instant of time.
     ObjUpvalue* openUpvalues;
     /// Running total of the number of bytes of managed memory the VM has allocated.

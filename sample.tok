@@ -93,18 +93,18 @@ closure();
 
 // Classes
 
-class Scone {
-  topping(first, second) {
-    print "scone with " + first + " and " + second;
+class CoffeeMaker {
+  init(coffee) {
+    this.coffee = coffee;
   }
 
-  printPrice() {
-    // needs price field to be instantiated on the object.
-    print this.price;
+  brew() {
+    print "Enjoy your cup of " + this.coffee;
+
+    // No reusing the grounds!
+    this.coffee = nil;
   }
 }
 
-var scone = Scone();
-scone.price = 2.99;
-scone.topping("berries", "cream");
-scone.printPrice();
+var maker = CoffeeMaker("coffee and Cocoa");
+maker.brew();

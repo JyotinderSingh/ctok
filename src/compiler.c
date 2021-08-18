@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
+#include "common.h"z
 #include "compiler.h"
 #include "memory.h"
 #include "scanner.h"
@@ -80,6 +80,7 @@ typedef struct {
 typedef enum {
     TYPE_FUNCTION,
     TYPE_METHOD,
+    TYPE_INITIALIZER,
     TYPE_SCRIPT
 } FunctionType;
 
@@ -282,8 +283,13 @@ static int emitJump(uint8_t instruction) {
 }
 
 static void emitReturn() {
-    // implicit return value of any function is NIL.
-    emitByte(OP_NIL);
+    if (current->type == TYPE_INITIALIZER) {
+        // in case of an initializer, instead of pushing nil onto the stack before returning, we load slot zero - which contains the instance.
+        emitBytes(OP_GET_LOCAL, 0);
+    } else {
+        // implicit return value of any function is NIL.
+        emitByte(OP_NIL);
+    }
     emitByte(OP_RETURN);
 }
 
@@ -1159,6 +1165,10 @@ static void method() {
     // The function compiles the subsequent parameter list and function body. Then it emits the code to create an ObjClosure
     // and leaves it on top of the stack. At runtime, the VM will find the closure there.
     FunctionType type = TYPE_METHOD;
+    // initializers are a special kind of method.
+    if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4) == 0) {
+        type = TYPE_INITIALIZER;
+    }
     function(type);
 
     // emit bytecode to add the method to the class's method table, with the constant table index as the operand.
@@ -1396,6 +1406,9 @@ static void returnStatement() {
     if (match(TOKEN_SEMICOLON)) {
         emitReturn();
     } else {
+        if (current->type == TYPE_INITIALIZER) {
+            error("Can't return a value from an initializer.");
+        }
         // In case a value is returned, parse that value and emit the OP_RETURN.
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after return value.");

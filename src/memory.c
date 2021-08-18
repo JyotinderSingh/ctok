@@ -255,6 +255,7 @@ static void markRoots() {
     // The compiler itself periodically grabs memory from the heap for literals and constant table. If the GC runs
     // while we're in the middle of compiling, then any values the compiler directly accesses need to be treated as roots too.
     markCompilerRoots();
+    markObject((Obj*) vm.initString);
 }
 
 /**
