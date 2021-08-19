@@ -721,11 +721,23 @@ static void super_(bool canAssign) {
     // in order to access the superclass method on the current instance, the runtime needs both the receiver and the superclass.
     // of the surrounding method's class. The first namedVariable() call generates the call to look up the current receiver
     // stored in the hidden variable 'this' and push it onto the stack.
-    // The second namedVariable() call emits the code to look up the superclass from its 'super' variable and push that on top.
+    // The second namedVariable() call emits the code to load up the superclass from its 'super' variable and push that on top.
     namedVariable(syntheticToken("this"), false);
-    namedVariable(syntheticToken("super"), false);
-    // emit the OP_GET_SUPER instruction with the operand as the constant table index of the method name.
-    emitBytes(OP_GET_SUPER, name);
+
+    // check if this is a direct super call invocation.
+    if (match(TOKEN_LEFT_PAREN)) {
+        // parse the argument list.
+        uint8_t argCount = argumentList();
+        namedVariable(syntheticToken("super"), false);
+        // OP_SUPER_INVOKE combines the behaviour of OP_GET_SUPER and OP_CALL, so it takes two operands:
+        // the constant table index of the method name to look up, and the number of arguments to pass to it.
+        emitBytes(OP_SUPER_INVOKE, name);
+        emitByte(argCount);
+    } else {
+        // in case its only a super method access, and not invocation.
+        namedVariable(syntheticToken("super"), false);
+        emitBytes(OP_GET_SUPER, name);
+    }
 }
 
 /**

@@ -745,6 +745,23 @@ static InterpretResult run() {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_SUPER_INVOKE: {
+                //Optimized flow for super method invocation.
+                // The main difference is in how the stack is organized.
+                // read the name of the method being called.
+                ObjString* method = READ_STRING();
+                // read the number of arguments passed to the method.
+                int argCount = READ_BYTE();
+                // load the superclass being referred to.
+                ObjClass* superclass = AS_CLASS(pop());
+                // invoke the method call.
+                if (!invokeFromClass(superclass, method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // update the cached local frame if the invocation succeeded, since now a new CallFrame has been pushed to the CallFrame stack.
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_CLOSURE: {
                 // Read the function object from the constant table.
                 ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
