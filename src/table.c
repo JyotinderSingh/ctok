@@ -169,8 +169,8 @@ bool tableDelete(Table* table, ObjString* key) {
 
 /**
  * Utility function to copy all the entries of one hash table to another.
- * @param from
- * @param to
+ * @param from table from which elements are to be copied from
+ * @param to table to which elements are to be copied into
  */
 void tableAddAll(Table* from, Table* to) {
     for (int i = 0; i < from->capacity; i++) {

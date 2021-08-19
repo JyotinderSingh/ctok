@@ -620,6 +620,18 @@ static InterpretResult run() {
                 push(value);
                 break;
             }
+            case OP_GET_SUPER: {
+                // read the method name from the constant table.
+                ObjString* name = READ_STRING();
+                // Load up the superclass object, which the compiler has placed on top of the stack.
+                ObjClass* superclass = AS_CLASS(pop());
+
+                // bind the method to the superclass.
+                if (!bindMethod(superclass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
             case OP_EQUAL: {
                 // get the two operands
                 Value b = pop();
@@ -802,10 +814,29 @@ static InterpretResult run() {
                 // Load the string for the class's name from the constant table and pass that to newClass().
                 // This creates a new class object with the given name. We then push this onto the stack.
                 // If the class is bound to a global variable, then the compiler's call to defineVariable() will emit
-                // code tos tore that object from the stack into the global variable table. Otherwise, it's right where
+                // code to store that object from the stack into the global variable table. Otherwise, it's right where
                 // it needs to be on the stack for a new local variable.
                 push(OBJ_VAL(newClass(READ_STRING())));
                 break;
+            case OP_INHERIT: {
+                // get the superclass
+                Value superclass = peek(1);
+
+                // check if the user is trying to inherit from a valid class.
+                if (!IS_CLASS(superclass)) {
+                    runtimeError("Superclass must be a class.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                // get the subclass
+                ObjClass* subclass = AS_CLASS(peek(0));
+                // copy all the superclass's methods into the subclass.
+                // by the time the subclass's body is about to be parsed, all the methods of the superclass are
+                // present in the subclass's own method table. Hence, no extra work needs to be done at runtime.
+                tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
+                pop();  // pop the subclass
+                break;
+            }
             case OP_METHOD:
                 defineMethod(READ_STRING());
                 break;

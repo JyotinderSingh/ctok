@@ -117,6 +117,8 @@ typedef struct Compiler {
 typedef struct ClassCompiler {
     // link to the enclosing class.
     struct ClassCompiler* enclosing;
+    // field which is true if the class inherits from a super class, false otherwise.
+    bool hasSuperclass;
 } ClassCompiler;
 
 Parser parser;
@@ -635,7 +637,8 @@ static void string(bool canAssign) {
 
 /**
  * Emits the bytecode to read a variable with a specific name.
- * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_* in the bytecode.
+ * Adds the name of the variable to the chunk's constant table as an ObjString, and stores it as an operand for OP_GET_*
+ * or OP_SET_* in the bytecode.
  * @param name Token for the variable to be read.
  */
 static void namedVariable(Token name, bool canAssign) {
@@ -673,10 +676,56 @@ static void namedVariable(Token name, bool canAssign) {
 }
 
 /**
- * We use this function to hook up identifier tokens to the expression parser.
+ * We use this function to hook up  identifier tokens that was just read to the expression parser.
  */
 static void variable(bool canAssign) {
     namedVariable(parser.previous, canAssign);
+}
+
+/**
+ * Generates a synthetic Token that lives as a part of the VM's constant data section, and never needs to be freed.
+ * @param text lexeme of the token.
+ * @return Token with the given lexeme.
+ */
+static Token syntheticToken(const char* text) {
+    Token token;
+    token.start = text;
+    token.length = (int) strlen(text);
+    return token;
+}
+
+/**
+ * Function to parse a super call.\n
+ * Since the 'dot' and the method name following it are inseparable parts of the 'super' syntax, we consume it here.\n
+ * However, the parenthesized argument list is separate. As with normal method access, Tok supports getting a reference to
+ * a superclass method as a closure without invoking it.\n
+ * In other words, Tok doesn't really have super 'call' expressions, it has super class 'access' expressions, which you
+ * can immediately choose to invoke if you want.\n
+ * So, when the compiler hits a 'super' token, we consume the subsequent '.' token and then look for a method name.
+ * Methods are looked up dynamically, so we use <code>identifierConstant</code> to take the lexeme of the method name and
+ * store it in the constant table just like we do for property access expressions.
+ * @param canAssign
+ */
+static void super_(bool canAssign) {
+    // check for illegal access.
+    if (currentClass == NULL) {
+        error("Can't use 'super' outside of a class.");
+    } else if (!currentClass->hasSuperclass) {
+        error("Can't use 'super' in a class with no superclass.");
+    }
+
+    consume(TOKEN_DOT, "Expect '.' after 'super'.");
+    consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
+    uint8_t name = identifierConstant(&parser.previous);
+
+    // in order to access the superclass method on the current instance, the runtime needs both the receiver and the superclass.
+    // of the surrounding method's class. The first namedVariable() call generates the call to look up the current receiver
+    // stored in the hidden variable 'this' and push it onto the stack.
+    // The second namedVariable() call emits the code to look up the superclass from its 'super' variable and push that on top.
+    namedVariable(syntheticToken("this"), false);
+    namedVariable(syntheticToken("super"), false);
+    // emit the OP_GET_SUPER instruction with the operand as the constant table index of the method name.
+    emitBytes(OP_GET_SUPER, name);
 }
 
 /**
@@ -769,7 +818,7 @@ ParseRule rules[] = {
         [TOKEN_OR]            = {NULL, or_, PREC_OR},
         [TOKEN_PRINT]         = {NULL, NULL, PREC_NONE},
         [TOKEN_RETURN]        = {NULL, NULL, PREC_NONE},
-        [TOKEN_SUPER]         = {NULL, NULL, PREC_NONE},
+        [TOKEN_SUPER]         = {super_, NULL, PREC_NONE},
         [TOKEN_THIS]          = {this_, NULL, PREC_NONE},
         [TOKEN_TRUE]          = {literal, NULL, PREC_NONE},
         [TOKEN_VAR]           = {NULL, NULL, PREC_NONE},
@@ -1210,8 +1259,39 @@ static void classDeclaration() {
     // If we aren't inside any class declaration at all, the module variable currentClass is NULL.
     // When the compiler begins compiling a class, it pushes a new class compiler onto that implicit linked stack.
     ClassCompiler classCompiler;
+    classCompiler.hasSuperclass = false;
     classCompiler.enclosing = currentClass;
     currentClass = &classCompiler;
+
+    // if the next token is '<', then we found a superclass clause.
+    if (match(TOKEN_LESS)) {
+        // consume the name of the superclass.
+        consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+        // takes the identifier we just consumed, treats it as a variable reference, and emits code to load the variable's value.
+        // Basically, it looks up the superclass by name and pushes it onto the stack.
+        variable(false);
+
+        // check edge case if the user tried to inherit the class from itself.
+        if (identifiersEqual(&className, &parser.previous)) {
+            error("A class can't inherit from itself.");
+        }
+
+        // we create a new lexical scope when inheriting from a superclass, to store the reference to the superclass
+        // for super access in subclass.
+        // Creating a new lexical scope ensures that if we declare two classes in the same scope, each has a different
+        // local slot to store its superclass. Since we always name this variable "super", if we didn't make a scope for
+        // each subclass, the variables would collide.
+        beginScope();
+        addLocal(syntheticToken("super"));
+        defineVariable(0);
+
+        // loads the subclass doing the inheriting onto the stack.
+        namedVariable(className, false);
+        // Emit bytecode to wire the superclass to the new subclass.
+        emitByte(OP_INHERIT);
+
+        classCompiler.hasSuperclass = true;
+    }
 
     // Right before compiling the class body, we call namedVariable(). It generates code to load a variable with the given
     // name onto the stack.
@@ -1229,6 +1309,13 @@ static void classDeclaration() {
     // When we execute each OP_METHOD instruction, the stack has the method's closure on top with the class right under
     // it. Once we've reached the end of the methods, we no longer need the class and tell the VM to pop it off the stack.
     emitByte(OP_POP);
+
+    // if the class inherited from a super class, we would have opened a new scope. Hence, now we need to close it.
+    if (classCompiler.hasSuperclass) {
+        // we pop the scope and discard the "super" variable after compiling the class body and its methods.
+        // This way, the variable is accessible in all the methods of the subclass.
+        endScope();
+    }
 
     // at the end of the class body, we pop the class compiler off the stack and restore the enclosing one.
     currentClass = currentClass->enclosing;

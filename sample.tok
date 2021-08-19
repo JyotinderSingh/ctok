@@ -108,3 +108,26 @@ class CoffeeMaker {
 
 var maker = CoffeeMaker("coffee and Cocoa");
 maker.brew();
+
+// inheritance
+
+class Doughnut {
+  cook() {
+    print "Dunk in the fryer.";
+    this.finish("sprinkles");
+  }
+
+  finish(ingredient) {
+    print "Finish with " + ingredient;
+  }
+}
+
+class Cruller < Doughnut {
+  finish(ingredient) {
+    // No sprinkles, always icing.
+    super.finish("icing");
+  }
+}
+
+var snacc = Cruller();
+snacc.finish("something");
