@@ -48,7 +48,10 @@ void freeTable(Table* table) {
  * @return
  */
 static Entry* findEntry(Entry* entries, int capacity, ObjString* key) {
-    uint32_t index = key->hash % capacity;
+    // uint32_t index = key->hash % capacity;
+    // Optimized way to get the mod. We know our table's capacity is always a power of 2 - so we rather than using %
+    // we can simply do a bitwise AND of the number and the (divisor - 1), where divisor is the table capacity.
+    uint32_t index = key->hash & (capacity - 1);
     Entry* tombstone = NULL;
 
     for (;;) {
@@ -66,7 +69,9 @@ static Entry* findEntry(Entry* entries, int capacity, ObjString* key) {
             return entry;
         }
 
-        index = (index + 1) % capacity;
+        // index = (index + 1) % capacity;
+        // Optimization (same as above)
+        index = (index + 1) & (capacity - 1);
     }
 
 }
@@ -192,7 +197,9 @@ void tableAddAll(Table* from, Table* to) {
 ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t hash) {
     if (table->count == 0) return NULL;
 
-    uint32_t index = hash % table->capacity;
+    // uint32_t index = hash % table->capacity;
+    // optimization for modulo with divisor which is a power of 2
+    uint32_t index = hash & (table->capacity - 1);
     for (;;) {
         Entry* entry = &table->entries[index];
         if (entry->key == NULL) {
@@ -205,7 +212,9 @@ ObjString* tableFindString(Table* table, const char* chars, int length, uint32_t
             return entry->key;
         }
 
-        index = (index + 1) % table->capacity;
+        // index = (index + 1) % table->capacity;
+        // same optimization as above.
+        index = (index + 1) & (table->capacity - 1);
     }
 }
 
