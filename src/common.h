@@ -10,6 +10,11 @@
 #include <stdint.h>
 
 /**
+ * When defined, enables memory optimized NaN Boxing representation for values. If your chip does not support this, remove this flag.
+ */
+#define NAN_BOXING
+
+/**
  * When this flag is defined we use the debug module to print out the chunk's bytecode.
  */
 //#define DEBUG_PRINT_CODE
