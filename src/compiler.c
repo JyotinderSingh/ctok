@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"z
+#include "common.h"
 #include "compiler.h"
 #include "memory.h"
 #include "scanner.h"
